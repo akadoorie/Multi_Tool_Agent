@@ -75,11 +75,20 @@ public class WebSearchTool implements Tool {
         return ToolResult.error("No results found for query: '" + query + "'.");
     }
 
-    /** Fast path: DuckDuckGo Instant Answer. Returns null when it has no abstract to offer. */
+    /**
+     * Fast path: DuckDuckGo Instant Answer. Returns null when it has no abstract to offer, or when the
+     * call fails &mdash; the fast path is best-effort, so any failure simply falls through to Wikipedia
+     * rather than failing the whole tool.
+     */
     private ToolResult tryDuckDuckGo(String query) {
-        JsonNode body = http.getJson(
-                props.tools().search().ddgUrl() + "?q={q}&format=json&no_html=1&skip_disambig=1",
-                Map.of("q", query));
+        JsonNode body;
+        try {
+            body = http.getJson(
+                    props.tools().search().ddgUrl() + "?q={q}&format=json&no_html=1&skip_disambig=1",
+                    Map.of("q", query));
+        } catch (RuntimeException e) {
+            return null;
+        }
         if (body == null) {
             return null;
         }

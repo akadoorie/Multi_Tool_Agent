@@ -80,6 +80,25 @@ class WebSearchToolTest {
     }
 
     @Test
+    void fallsBackToWikipediaWhenDuckDuckGoThrows() {
+        // The DDG fast path is best-effort: if it errors (e.g. an HTTP/parse failure), the tool must
+        // still fall back to Wikipedia rather than fail outright.
+        when(http.getJson(argThat(uri -> uri != null && uri.contains("duckduckgo")), anyMap()))
+                .thenThrow(new RuntimeException("boom"));
+        stubWikiSearch(json("{\"pages\":[{\"key\":\"Alan_Turing\",\"title\":\"Alan Turing\","
+                + "\"excerpt\":\"English mathematician\"}]}"));
+        stubWikiSummary(json("{\"extract\":\"Alan Turing was a mathematician and computer scientist.\"}"));
+
+        ToolResult result = tool.execute(input("who was alan turing"));
+
+        assertThat(result.ok()).isTrue();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) result.data();
+        assertThat(data.get("provider")).isEqualTo("wikipedia.org");
+        assertThat((String) data.get("summary")).contains("Turing");
+    }
+
+    @Test
     void returnsErrorWhenBothProvidersAreEmpty() {
         stubDuckDuckGo(json("{\"AbstractText\":\"\"}"));
         stubWikiSearch(json("{\"pages\":[]}"));

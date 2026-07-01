@@ -250,7 +250,13 @@ public class CoinFlipTool implements Tool {
 Web search returns **concise instant-answer / encyclopedic summaries with sources**, not a full
 search-engine result-page crawl. DuckDuckGo's Instant Answer API is the fast path, but it is empty for
 most real queries, so the tool **falls back to Wikipedia's REST API** (search then page summary). Only
-when both yield nothing does it report no results.
+when both yield nothing does it report no results. A DuckDuckGo failure is non-fatal — the fast path is
+best-effort and simply falls through to Wikipedia.
+
+Two provider quirks are handled centrally on the shared tool `RestClient` (`HttpClientConfig`): both
+APIs reject the default Java user-agent with **403**, so a descriptive `User-Agent` is sent on every
+call; and DuckDuckGo serves JSON with a `Content-Type` of `application/x-javascript`, so that media
+type is registered with the JSON converter.
 
 ---
 
@@ -260,10 +266,11 @@ when both yield nothing does it report no results.
 ./mvnw test        # or: mvn test
 ```
 
-25 deterministic tests, none of which call the live LLM:
+26 deterministic tests, none of which call the live LLM:
 
 - **Tool unit tests** — calculator (precedence, invalid expr, non-finite, div-by-zero), unit
-  conversions (°C→°F, km→m), currency via a stubbed rate, and the web-search DDG→Wikipedia fallback.
+  conversions (°C→°F, km→m), currency via a stubbed rate, and the web-search DDG→Wikipedia fallback
+  (including when DuckDuckGo errors).
 - **Agent-loop tests** (mocked `ChatModel`) — tool dispatch + trace shape, the scope gate (a task that
   invokes no tool returns `Unsupported`), tool-error recovery, the max-iterations guard,
   once-per-iteration token summing, and aggregating a tool call split across multiple `Generation`s.
