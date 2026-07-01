@@ -40,6 +40,14 @@ public class AgentLoop {
 
     private static final Logger log = LoggerFactory.getLogger(AgentLoop.class);
 
+    /**
+     * Returned when a task finishes without ever invoking a tool. Every legitimate answer must be
+     * grounded in a real tool result, so a no-tool answer is by definition out of scope. This is the
+     * structural backstop behind the prompt's scope rule &mdash; it holds even if the model tries to
+     * answer from its own knowledge.
+     */
+    private static final String UNSUPPORTED = "Unsupported";
+
     private final ChatModel chatModel;
     private final ToolRegistry registry;
     private final ChatOptionsFactory optionsFactory;
@@ -102,10 +110,16 @@ public class AgentLoop {
             conversation.add(assistant);
 
             if (toolCalls.isEmpty()) {
-                trace.add(TraceStep.finalAnswer(++stepIndex, iteration, assistantText,
-                        modelLatencyMs, usage));
-                log.info("Task completed in {} iteration(s)", iteration);
-                return new LoopResult(assistantText, List.copyOf(trace),
+                // Scope gate: if the whole task ran without invoking any tool, the answer is not
+                // tool-grounded, so it is out of scope -> return exactly "Unsupported" regardless of
+                // what the model produced. Tool failures still count as "used" (the error is a real,
+                // grounded observation), so a legitimate "the tool failed" reply is preserved.
+                boolean anyToolUsed = trace.stream().anyMatch(step -> "tool".equals(step.type()));
+                String finalAnswer = anyToolUsed ? assistantText : UNSUPPORTED;
+                trace.add(TraceStep.finalAnswer(++stepIndex, iteration, finalAnswer, modelLatencyMs, usage));
+                log.info("Task completed in {} iteration(s){}", iteration,
+                        anyToolUsed ? "" : " with no tool used -> Unsupported");
+                return new LoopResult(finalAnswer, List.copyOf(trace),
                         new TaskRollup(elapsedMs(taskStartNanos), totalInputTokens, totalOutputTokens,
                                 iteration));
             }

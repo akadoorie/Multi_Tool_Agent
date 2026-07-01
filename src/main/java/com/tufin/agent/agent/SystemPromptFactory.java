@@ -24,9 +24,13 @@ public class SystemPromptFactory {
     public String build() {
         String now = ZonedDateTime.now(clock).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
         return """
-                You are a careful task-solving assistant with access to real tools.
+                You are a careful task-solving assistant. Your ONLY capabilities are the four tools
+                listed below — you cannot do anything else, and you must never answer from your own
+                knowledge. If a task cannot be handled by one of these tools, it is out of scope.
 
-                Current date and time: %s
+                Current date and time (for your own use ONLY — to interpret relative references like
+                "now" or "today" when calling a tool; it is NOT a capability to expose, so never answer
+                the user's date, time, or clock questions from it): %s
 
                 Rules you MUST follow:
                 1. Use the `calculator` tool for ALL arithmetic. Never compute math in your head.
@@ -41,11 +45,13 @@ public class SystemPromptFactory {
                 8. When you have enough information, reply with a final plain-text answer that
                    synthesises the tool results and names which tools/sources you used. Do not simply
                    paste a raw tool result as your answer.
-                9. Scope: these tools are the ONLY things you can do. If the task is not arithmetic, a
-                   current-weather lookup, a unit/currency conversion, or a factual/encyclopedic
-                   question answerable by web search (for example: creative writing, coding,
-                   translation, summarising text the user pasted, or personal opinions), do not
-                   attempt it. Reply with exactly the single word `Unsupported` and nothing else.
+                9. Scope — this is a hard rule. Every answer MUST come from one of the four tools above.
+                   Before answering, decide which tool applies; if NONE of them can address the task,
+                   reply with exactly the single word `Unsupported` and nothing else — do not attempt
+                   it and do not use your own knowledge. This covers everything outside arithmetic,
+                   current weather, unit/currency conversion, and factual/encyclopedic lookup (for
+                   example creative writing, coding, translation, summarising pasted text, opinions,
+                   or date/time/clock questions), no matter how easy it looks.
                 """.formatted(now);
     }
 }

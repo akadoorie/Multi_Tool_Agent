@@ -33,4 +33,13 @@ class SystemPromptFactoryTest {
         assertThat(prompt).contains("2026-07-01");
         assertThat(prompt).contains("calculator", "weather", "unit_converter", "web_search");
     }
+
+    @Test
+    void keepsTheInjectedDateTimeInternalSoBareTimeQuestionsAreOutOfScope() {
+        String prompt = factory.build();
+
+        // The timestamp is injected to anchor "now"/"today" for tools, not as a clock to expose;
+        // a bare date/time question has no supporting tool and must be Unsupported.
+        assertThat(prompt).contains("date, time, or clock");
+    }
 }

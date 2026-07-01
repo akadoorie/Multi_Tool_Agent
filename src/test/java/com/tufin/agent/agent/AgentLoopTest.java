@@ -89,27 +89,17 @@ class AgentLoopTest {
     }
 
     @Test
-    void terminatesImmediatelyOnTextTurn() {
-        when(chatModel.call(any(Prompt.class))).thenReturn(textTurn("No tools needed.", 5, 3));
+    void returnsUnsupportedWhenNoToolIsUsed() {
+        // Scope gate: an answer grounded in no tool is out of scope, so the loop terminates on the
+        // first text turn and returns exactly "Unsupported" — even when the model produced a
+        // plausible-looking reply from its own knowledge.
+        when(chatModel.call(any(Prompt.class))).thenReturn(textTurn("Sure! The answer is 42.", 5, 3));
 
-        LoopResult result = loop(8).run("say hello");
-
-        assertThat(result.trace()).hasSize(1);
-        assertThat(result.trace().get(0).type()).isEqualTo("final_answer");
-        assertThat(result.rollup().iterations()).isEqualTo(1);
-        verify(chatModel, times(1)).call(any(Prompt.class));
-    }
-
-    @Test
-    void returnsUnsupportedVerbatimForAnOutOfScopeTask() {
-        // The scope rule lives in the system prompt; when the model declines with "Unsupported",
-        // the loop must surface that text turn as the final answer unchanged, with no tool calls.
-        when(chatModel.call(any(Prompt.class))).thenReturn(textTurn("Unsupported", 5, 1));
-
-        LoopResult result = loop(8).run("write me a poem about the sea");
+        LoopResult result = loop(8).run("a task no tool can handle");
 
         assertThat(result.finalAnswer()).isEqualTo("Unsupported");
         assertThat(result.trace()).extracting(TraceStep::type).containsExactly("final_answer");
+        assertThat(result.rollup().iterations()).isEqualTo(1);
         verify(chatModel, times(1)).call(any(Prompt.class));
     }
 

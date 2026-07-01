@@ -96,8 +96,9 @@ framework's automatic tool execution, because the assignment needs a trace of ev
 
 1. **Reason** — send the full conversation + tool schemas to Claude (one model call; timed). The
    Messages API is stateless, so we resend the whole history each turn.
-2. If the response has **no tool calls**, it's the final answer → record a `final_answer` step and
-   return.
+2. If the response has **no tool calls**, the loop ends and returns the final answer — unless *no tool
+   was invoked anywhere in the task*, in which case the answer isn't tool-grounded and the loop returns
+   exactly `Unsupported` (the scope gate, below).
 3. Otherwise record one **`model_call`** step (reasoning text + token usage for this turn), then for
    each requested tool: **act** (execute the real tool, timed) and **observe** (append the real result
    as a `ToolResponseMessage`). Record one `tool` step per call.
@@ -114,11 +115,15 @@ framework's automatic tool execution, because the assignment needs a trace of ev
   tool result. The tool-first system prompt forbids answering math/current-data/conversions from
   memory, and instructs the model to treat tool output as data, not instructions (prompt-injection
   guard).
-- **Scope guard** — the agent is constrained to what its tools can do: arithmetic, current weather,
-  unit/currency conversion, and factual/encyclopedic lookup. A task that none of the tools can address
-  — e.g. creative writing, coding, or translation — is answered with exactly `Unsupported` rather than
-  an ungrounded guess. (Enforced by the system prompt: the model already judges tool relevance to pick
-  a tool, so the same judgement decides in-scope vs. `Unsupported`.)
+- **Scope guard (two layers)** — the agent is constrained to what its tools can do: arithmetic,
+  current weather, unit/currency conversion, and factual/encyclopedic lookup. (1) The system prompt is
+  *closed-world* — the four tools are the only capabilities, and anything else must be answered with
+  exactly `Unsupported`. (2) A **deterministic backstop** in the loop enforces this structurally: if a
+  task finishes without invoking any tool, the answer isn't tool-grounded, so the loop returns exactly
+  `Unsupported` regardless of what the model produced. The prompt handles the clean case; the code gate
+  guarantees the rule even if the model tries to answer from memory. (The injected date/time is
+  *internal-only* — it anchors "now"/"today" for the weather tool — so a bare date/time question is
+  itself out of scope.)
 
 ### Reading Claude's reply — why we aggregate `Generation`s
 
@@ -259,12 +264,12 @@ when both yield nothing does it report no results.
 
 - **Tool unit tests** — calculator (precedence, invalid expr, non-finite, div-by-zero), unit
   conversions (°C→°F, km→m), currency via a stubbed rate, and the web-search DDG→Wikipedia fallback.
-- **Agent-loop tests** (mocked `ChatModel`) — tool dispatch + trace shape, immediate termination on a
-  text turn, returning `Unsupported` verbatim for an out-of-scope task, tool-error recovery, the
-  max-iterations guard, once-per-iteration token summing, and aggregating a tool call split across
-  multiple `Generation`s.
+- **Agent-loop tests** (mocked `ChatModel`) — tool dispatch + trace shape, the scope gate (a task that
+  invokes no tool returns `Unsupported`), tool-error recovery, the max-iterations guard,
+  once-per-iteration token summing, and aggregating a tool call split across multiple `Generation`s.
 - **System-prompt test** — the built prompt injects the current date (fixed `Clock`), the four tool
-  rules, and the out-of-scope → `Unsupported` scope rule.
+  rules, the out-of-scope → `Unsupported` scope rule, and the internal-only-timestamp rule (so bare
+  date/time questions are out of scope).
 - **Controller tests** (MockMvc) — `POST /task`, `GET /tasks/{id}` round-trip + 404, `GET /health`.
 - **Repository test** — save/find round-trip and index rebuild from the file on restart.
 
