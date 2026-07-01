@@ -70,6 +70,25 @@ class AgentLoopTest {
     }
 
     @Test
+    void aggregatesToolCallsSplitAcrossGenerations() {
+        // Reproduces the real Spring AI Anthropic behaviour: one tool_use turn arrives split across
+        // two Generations (an empty leading one, then the tool call). The loop must still dispatch it.
+        when(chatModel.call(any(Prompt.class))).thenReturn(
+                splitToolTurn(10, 5, call("calculator", "{\"expression\":\"17 * 23\"}")),
+                textTurn("The answer is 391.", 20, 7));
+
+        LoopResult result = loop(8).run("what is 17 * 23");
+
+        assertThat(result.finalAnswer()).isEqualTo("The answer is 391.");
+        assertThat(result.trace()).extracting(TraceStep::type)
+                .containsExactly("model_call", "tool", "final_answer");
+        TraceStep toolStep = result.trace().get(1);
+        assertThat(toolStep.tool()).isEqualTo("calculator");
+        assertThat(((ToolResult) toolStep.toolOutput()).ok()).isTrue();
+        verify(chatModel, times(2)).call(any(Prompt.class));
+    }
+
+    @Test
     void terminatesImmediatelyOnTextTurn() {
         when(chatModel.call(any(Prompt.class))).thenReturn(textTurn("No tools needed.", 5, 3));
 
@@ -136,6 +155,19 @@ class AgentLoopTest {
 
     private ChatResponse textTurn(String text, int in, int out) {
         return response(new AssistantMessage(text), in, out);
+    }
+
+    /**
+     * Mirrors Spring AI's Anthropic mapping splitting one assistant turn into an empty leading
+     * {@link Generation} plus a separate Generation carrying the {@code tool_use} block.
+     */
+    private ChatResponse splitToolTurn(int in, int out, AssistantMessage.ToolCall call) {
+        AssistantMessage empty = new AssistantMessage("", Map.of(), List.of());
+        AssistantMessage withCall = new AssistantMessage("", Map.of(), List.of(call));
+        ChatResponseMetadata metadata = ChatResponseMetadata.builder()
+                .usage(new DefaultUsage(in, out, in + out))
+                .build();
+        return new ChatResponse(List.of(new Generation(empty), new Generation(withCall)), metadata);
     }
 
     private ChatResponse response(AssistantMessage message, int in, int out) {

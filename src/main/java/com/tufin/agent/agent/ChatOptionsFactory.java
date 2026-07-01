@@ -1,7 +1,6 @@
 package com.tufin.agent.agent;
 
 import com.tufin.agent.config.AppProperties;
-import com.tufin.agent.tool.Tool;
 import com.tufin.agent.tool.ToolRegistry;
 import java.util.List;
 import org.springframework.ai.anthropic.AnthropicChatOptions;
@@ -45,15 +44,5 @@ public class ChatOptionsFactory {
             builder.temperature(props.agent().temperature());
         }
         return builder.build();
-    }
-
-    /** Exposed so the connectivity spike can advertise the same tool schemas. */
-    List<ToolCallback> toolCallbacks() {
-        return toolCallbacks;
-    }
-
-    /** Convenience for the spike: adapt any single tool without the registry. */
-    static ToolCallback adapt(Tool tool) {
-        return new SpringAiToolAdapter(tool);
     }
 }

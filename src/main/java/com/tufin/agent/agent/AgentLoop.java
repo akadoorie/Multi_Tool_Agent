@@ -10,6 +10,8 @@ import com.tufin.agent.tool.ToolResult;
 import com.tufin.agent.util.JsonSupport;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -20,6 +22,7 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.stereotype.Component;
@@ -79,28 +82,36 @@ public class AgentLoop {
             ChatResponse response = chatModel.call(new Prompt(conversation, options));
             long modelLatencyMs = elapsedMs(modelStartNanos);
 
-            AssistantMessage assistant = response.getResult().getOutput();
             TraceStep.TokenUsage usage = extractUsage(response);
             // Sum tokens once per model call (never per tool step) so parallel tool calls in one turn
             // are not double-counted.
             totalInputTokens += nullToZero(usage.inputTokens());
             totalOutputTokens += nullToZero(usage.outputTokens());
 
+            // Spring AI's Anthropic mapping can split ONE assistant turn across several Generations
+            // (e.g. an empty leading text block plus a separate tool_use block). Reading only
+            // response.getResult() (the first Generation) would miss tool calls that landed in a
+            // later one, so we aggregate text and tool calls across every Generation and rebuild a
+            // single assistant turn to add to the history.
+            String assistantText = aggregateText(response.getResults());
+            List<AssistantMessage.ToolCall> toolCalls = aggregateToolCalls(response.getResults());
+            AssistantMessage assistant =
+                    new AssistantMessage(assistantText == null ? "" : assistantText, Map.of(), toolCalls);
+
             // Resend the full history each turn: the Messages API is stateless.
             conversation.add(assistant);
 
-            List<AssistantMessage.ToolCall> toolCalls = assistant.getToolCalls();
-            if (toolCalls == null || toolCalls.isEmpty()) {
-                trace.add(TraceStep.finalAnswer(++stepIndex, iteration, assistant.getText(),
+            if (toolCalls.isEmpty()) {
+                trace.add(TraceStep.finalAnswer(++stepIndex, iteration, assistantText,
                         modelLatencyMs, usage));
                 log.info("Task completed in {} iteration(s)", iteration);
-                return new LoopResult(assistant.getText(), List.copyOf(trace),
+                return new LoopResult(assistantText, List.copyOf(trace),
                         new TaskRollup(elapsedMs(taskStartNanos), totalInputTokens, totalOutputTokens,
                                 iteration));
             }
 
             // One model_call step per iteration carries the reasoning text + tokens for this turn.
-            trace.add(TraceStep.modelCall(++stepIndex, iteration, assistant.getText(), modelLatencyMs, usage));
+            trace.add(TraceStep.modelCall(++stepIndex, iteration, assistantText, modelLatencyMs, usage));
 
             List<ToolResponseMessage.ToolResponse> toolResponses = new ArrayList<>();
             for (AssistantMessage.ToolCall call : toolCalls) {
@@ -120,6 +131,25 @@ public class AgentLoop {
         // Loop exhausted: fail loudly rather than fabricate an answer.
         throw new AgentExecutionException(
                 "Could not complete the task within " + maxIterations + " iterations.");
+    }
+
+    /** Joins the non-blank text from every Generation; returns null if the turn carried no text. */
+    private static String aggregateText(List<Generation> generations) {
+        String joined = generations.stream()
+                .map(generation -> generation.getOutput().getText())
+                .filter(text -> text != null && !text.isBlank())
+                .collect(Collectors.joining("\n"));
+        return joined.isBlank() ? null : joined;
+    }
+
+    /** Collects the tool calls from every Generation into one list (never null). */
+    private static List<AssistantMessage.ToolCall> aggregateToolCalls(List<Generation> generations) {
+        return generations.stream()
+                .map(Generation::getOutput)
+                .map(AssistantMessage::getToolCalls)
+                .filter(calls -> calls != null)
+                .flatMap(List::stream)
+                .toList();
     }
 
     private static long elapsedMs(long startNanos) {
