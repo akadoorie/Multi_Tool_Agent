@@ -1,0 +1,11 @@
+services:
+  agent:
+    build: .
+    ports:
+      - "8080:8080"
+    # Injects ANTHROPIC_API_KEY (and any other vars) from the gitignored .env file.
+    env_file:
+      - .env
+    # Persists the JSONL task store on the host so history survives container restarts.
+    volumes:
+      - ./data:/app/data

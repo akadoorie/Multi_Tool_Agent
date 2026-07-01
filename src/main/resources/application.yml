@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: multi-tool-agent
+  jackson:
+    # API and stored records use snake_case (task_id, final_answer, ...).
+    property-naming-strategy: SNAKE_CASE
+    default-property-inclusion: non_null
+  ai:
+    anthropic:
+      # The API key is never stored in this file. It is resolved from the environment
+      # (Docker Compose injects it from a gitignored .env). The model is NOT set here on
+      # purpose — ChatOptionsFactory is the single source of truth for the model.
+      api-key: ${ANTHROPIC_API_KEY:}
+
+app:
+  agent:
+    model: claude-sonnet-4-6
+    max-iterations: 8
+    max-tokens: 8192
+    temperature: 0.0
+    # Sonnet 4.6 accepts sampling params; set false for Opus 4.8/4.7 (they reject temperature with 400).
+    send-sampling-params: true
+  http:
+    connect-timeout: 3s
+    read-timeout: 10s
+  tools:
+    weather:
+      geocode-url: https://geocoding-api.open-meteo.com/v1/search
+      forecast-url: https://api.open-meteo.com/v1/forecast
+    search:
+      ddg-url: https://api.duckduckgo.com/
+      wiki-search-url: https://en.wikipedia.org/w/rest.php/v1/search/page
+      wiki-summary-url: https://en.wikipedia.org/api/rest_v1/page/summary/
+    currency:
+      url: https://api.frankfurter.app
+  persistence:
+    data-file: ./data/tasks.jsonl
+
+logging:
+  level:
+    com.tufin.agent: INFO

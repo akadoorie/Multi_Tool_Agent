@@ -1,0 +1,14 @@
+# Keep secrets and the private interview file out of the build context / image layers
+.env
+QandA.md
+
+# Build output and runtime data (the image builds its own)
+target/
+data/
+
+# VCS and IDE
+.git/
+.gitignore
+.idea/
+*.iml
+.vscode/

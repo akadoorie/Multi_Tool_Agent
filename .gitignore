@@ -1,0 +1,22 @@
+# Secrets and private files — never commit
+.env
+QandA.md
+
+# Maven build output
+target/
+
+# Runtime task store (regenerated at runtime; persisted via the Docker volume)
+data/
+
+# IDE / editor / local tooling
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
