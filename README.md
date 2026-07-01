@@ -115,6 +115,17 @@ framework's automatic tool execution, because the assignment needs a trace of ev
   memory, and instructs the model to treat tool output as data, not instructions (prompt-injection
   guard).
 
+### Reading Claude's reply — why we aggregate `Generation`s
+
+Claude's reply is one message whose body is a list of *content blocks* (text and/or `tool_use`
+requests). Spring AI exposes those on the `ChatResponse` as a `List<Generation>`, and a single
+tool-call reply can arrive **split across several generations** (e.g. an empty leading one, then a
+separate generation carrying the `tool_use`). So the loop reads **all** of them
+(`response.getResults()`) and aggregates their text and tool calls into one assistant turn, instead of
+reading only `response.getResult()` — the *first* generation. Reading only the first would miss a tool
+call that landed in a later generation and make the agent silently skip the tool. A regression test
+pins this behaviour, and it is exactly what the live connectivity spike (§9) surfaced.
+
 ### Token & latency capture
 
 Token usage comes from each response via Spring AI `ChatResponse.getMetadata().getUsage()`
@@ -239,19 +250,22 @@ when both yield nothing does it report no results.
 ./mvnw test        # or: mvn test
 ```
 
-21 deterministic tests, none of which call the live LLM:
+22 deterministic tests, none of which call the live LLM:
 
 - **Tool unit tests** — calculator (precedence, invalid expr, non-finite, div-by-zero), unit
   conversions (°C→°F, km→m), currency via a stubbed rate, and the web-search DDG→Wikipedia fallback.
 - **Agent-loop tests** (mocked `ChatModel`) — tool dispatch + trace shape, immediate termination on a
-  text turn, tool-error recovery, the max-iterations guard, and once-per-iteration token summing.
+  text turn, tool-error recovery, the max-iterations guard, once-per-iteration token summing, and
+  aggregating a tool call split across multiple `Generation`s.
 - **Controller tests** (MockMvc) — `POST /task`, `GET /tasks/{id}` round-trip + 404, `GET /health`.
 - **Repository test** — save/find round-trip and index rebuild from the file on restart.
 
-> **De-risking the Spring AI tool path.** `SpringAiConnectivitySpike` (profile `spike`) exercises the
-> four version-sensitive Spring AI symbols the loop relies on. Compilation already proves they exist on
-> the pinned version; to also confirm the *runtime* behaviour against the live API:
+> **Live end-to-end smoke test (the "spike").** The automated tests mock `ChatModel`, so they prove the
+> orchestration but never exercise the real Spring AI ↔ Anthropic tool-calling path.
+> `SpringAiConnectivitySpike` (profile `spike`) closes that gap: it runs a *real* task through the real
+> `AgentLoop` against the live API and asserts a tool actually fired and a grounded answer came back:
 > `ANTHROPIC_API_KEY=... ./mvnw spring-boot:run -Dspring-boot.run.profiles=spike`.
+> This is what surfaced the multi-`Generation` split described in §3 — a bug the mocked tests could not see.
 
 ---
 
