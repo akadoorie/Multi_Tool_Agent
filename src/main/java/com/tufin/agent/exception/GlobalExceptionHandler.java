@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * Translates exceptions into consistent {@link ApiError} bodies with the right HTTP status, so
@@ -43,6 +44,14 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleServerSide(RuntimeException e) {
         log.error("Server-side failure", e);
         return build(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiError> handleNoResource(NoResourceFoundException e) {
+        // Browsers auto-request paths we don't serve (e.g. /favicon.ico). That's an ordinary 404,
+        // not a server error, so answer it quietly instead of logging a stack trace at ERROR.
+        log.debug("No static resource: {}", e.getMessage());
+        return build(HttpStatus.NOT_FOUND, "Resource not found");
     }
 
     @ExceptionHandler(Exception.class)
