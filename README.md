@@ -114,6 +114,11 @@ framework's automatic tool execution, because the assignment needs a trace of ev
   tool result. The tool-first system prompt forbids answering math/current-data/conversions from
   memory, and instructs the model to treat tool output as data, not instructions (prompt-injection
   guard).
+- **Scope guard** — the agent is constrained to what its tools can do: arithmetic, current weather,
+  unit/currency conversion, and factual/encyclopedic lookup. A task that none of the tools can address
+  — e.g. creative writing, coding, or translation — is answered with exactly `Unsupported` rather than
+  an ungrounded guess. (Enforced by the system prompt: the model already judges tool relevance to pick
+  a tool, so the same judgement decides in-scope vs. `Unsupported`.)
 
 ### Reading Claude's reply — why we aggregate `Generation`s
 
@@ -250,13 +255,16 @@ when both yield nothing does it report no results.
 ./mvnw test        # or: mvn test
 ```
 
-22 deterministic tests, none of which call the live LLM:
+25 deterministic tests, none of which call the live LLM:
 
 - **Tool unit tests** — calculator (precedence, invalid expr, non-finite, div-by-zero), unit
   conversions (°C→°F, km→m), currency via a stubbed rate, and the web-search DDG→Wikipedia fallback.
 - **Agent-loop tests** (mocked `ChatModel`) — tool dispatch + trace shape, immediate termination on a
-  text turn, tool-error recovery, the max-iterations guard, once-per-iteration token summing, and
-  aggregating a tool call split across multiple `Generation`s.
+  text turn, returning `Unsupported` verbatim for an out-of-scope task, tool-error recovery, the
+  max-iterations guard, once-per-iteration token summing, and aggregating a tool call split across
+  multiple `Generation`s.
+- **System-prompt test** — the built prompt injects the current date (fixed `Clock`), the four tool
+  rules, and the out-of-scope → `Unsupported` scope rule.
 - **Controller tests** (MockMvc) — `POST /task`, `GET /tasks/{id}` round-trip + 404, `GET /health`.
 - **Repository test** — save/find round-trip and index rebuild from the file on restart.
 

@@ -101,6 +101,19 @@ class AgentLoopTest {
     }
 
     @Test
+    void returnsUnsupportedVerbatimForAnOutOfScopeTask() {
+        // The scope rule lives in the system prompt; when the model declines with "Unsupported",
+        // the loop must surface that text turn as the final answer unchanged, with no tool calls.
+        when(chatModel.call(any(Prompt.class))).thenReturn(textTurn("Unsupported", 5, 1));
+
+        LoopResult result = loop(8).run("write me a poem about the sea");
+
+        assertThat(result.finalAnswer()).isEqualTo("Unsupported");
+        assertThat(result.trace()).extracting(TraceStep::type).containsExactly("final_answer");
+        verify(chatModel, times(1)).call(any(Prompt.class));
+    }
+
+    @Test
     void recoversWhenAToolErrorIsFedBack() {
         when(chatModel.call(any(Prompt.class))).thenReturn(
                 toolTurn("Trying a tool.", 8, 4, call("does_not_exist", "{}")),

@@ -8,7 +8,9 @@ import org.springframework.stereotype.Component;
 /**
  * Builds the tool-first system prompt. The prompt is what enforces grounding: it tells the model to
  * use tools for anything factual, to treat tool output as data, and to admit when it cannot answer
- * rather than guess. The current date/time is injected so "current"/"today" questions are anchored.
+ * rather than guess. It also defines scope: a task that none of the tools can address is answered
+ * with exactly {@code Unsupported}. The current date/time is injected so "current"/"today" questions
+ * are anchored.
  */
 @Component
 public class SystemPromptFactory {
@@ -39,6 +41,11 @@ public class SystemPromptFactory {
                 8. When you have enough information, reply with a final plain-text answer that
                    synthesises the tool results and names which tools/sources you used. Do not simply
                    paste a raw tool result as your answer.
+                9. Scope: these tools are the ONLY things you can do. If the task is not arithmetic, a
+                   current-weather lookup, a unit/currency conversion, or a factual/encyclopedic
+                   question answerable by web search (for example: creative writing, coding,
+                   translation, summarising text the user pasted, or personal opinions), do not
+                   attempt it. Reply with exactly the single word `Unsupported` and nothing else.
                 """.formatted(now);
     }
 }
