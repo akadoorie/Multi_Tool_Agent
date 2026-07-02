@@ -11,6 +11,7 @@ public final class DtoMapper {
     public static TaskResponse toResponse(TaskRecord record) {
         return new TaskResponse(
                 record.taskId(),
+                record.task(),
                 record.finalAnswer(),
                 record.trace(),
                 record.rollup());

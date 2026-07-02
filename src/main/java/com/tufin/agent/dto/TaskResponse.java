@@ -14,6 +14,7 @@ import java.util.List;
  * as the stored {@code createdAt} &mdash; is handled by this being a distinct response type.
  *
  * @param taskId      server-generated task id (use it to fetch the task later).
+ * @param task        the original natural-language task.
  * @param finalAnswer the agent's synthesised final answer.
  * @param trace       ordered execution trace.
  * @param rollup      latency/token totals for the task.
@@ -21,6 +22,8 @@ import java.util.List;
 public record TaskResponse(
         @Schema(description = "Server-generated task id.", example = "5f2c1e9a-1c2b-4a7d-9e10-3c4f5a6b7c8d")
         String taskId,
+        @Schema(description = "The original natural-language task.", example = "What is 15% of 240?")
+        String task,
         @Schema(description = "The agent's final answer, synthesised from tool results.")
         String finalAnswer,
         @Schema(description = "Ordered trace of every reasoning step and tool call.")

@@ -35,7 +35,7 @@ class TaskControllerTest {
     AgentService service;
 
     private TaskResponse sample(String id) {
-        return new TaskResponse(id, "42", List.of(), new TaskRollup(1, 1, 1, 1));
+        return new TaskResponse(id, "what is 2+2", "42", List.of(), new TaskRollup(1, 1, 1, 1));
     }
 
     @Test
@@ -47,6 +47,7 @@ class TaskControllerTest {
                         .content("{\"task\":\"what is 2+2\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.task_id").value("id-1"))
+                .andExpect(jsonPath("$.task").value("what is 2+2"))
                 .andExpect(jsonPath("$.final_answer").value("42"));
     }
 
@@ -66,7 +67,8 @@ class TaskControllerTest {
 
         mockMvc.perform(get("/tasks/id-1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.task_id").value("id-1"));
+                .andExpect(jsonPath("$.task_id").value("id-1"))
+                .andExpect(jsonPath("$.task").value("what is 2+2"));
 
         mockMvc.perform(get("/tasks/nope"))
                 .andExpect(status().isNotFound())
@@ -82,7 +84,8 @@ class TaskControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.page").value(0))
                 .andExpect(jsonPath("$.size").value(7))
-                .andExpect(jsonPath("$.items[0].task_id").value("id-1"));
+                .andExpect(jsonPath("$.items[0].task_id").value("id-1"))
+                .andExpect(jsonPath("$.items[0].task").value("what is 2+2"));
 
         verify(service).list(0, 7);
     }

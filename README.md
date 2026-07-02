@@ -174,6 +174,7 @@ The API and stored JSON use `snake_case` (`task_id`, `final_answer`, …).
 ```json
 {
   "task_id": "5f2c1e9a-…",
+  "task": "What is 15% of 240, and what is the current weather in Tel Aviv?",
   "final_answer": "15% of 240 is 36. The current weather in Tel Aviv is 29°C … (calculator, weather).",
   "trace": [
     { "index": 1, "iteration": 1, "type": "model_call", "thought": "I'll compute the percentage…",
