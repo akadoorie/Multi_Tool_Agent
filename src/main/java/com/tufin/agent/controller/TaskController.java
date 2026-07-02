@@ -4,7 +4,7 @@ import com.tufin.agent.config.AppProperties;
 import com.tufin.agent.dto.ApiError;
 import com.tufin.agent.dto.PagedTasksResponse;
 import com.tufin.agent.dto.TaskRequest;
-import com.tufin.agent.dto.TaskResponse;
+import com.tufin.agent.dto.TaskRecordDto;
 import com.tufin.agent.exception.InvalidRequestException;
 import com.tufin.agent.service.AgentService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -39,26 +39,26 @@ public class TaskController {
                     + "final answer plus the full reasoning/tool trace.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Task solved",
-                    content = @Content(schema = @Schema(implementation = TaskResponse.class))),
+                    content = @Content(schema = @Schema(implementation = TaskRecordDto.class))),
             @ApiResponse(responseCode = "400", description = "Blank/invalid task",
                     content = @Content(schema = @Schema(implementation = ApiError.class))),
             @ApiResponse(responseCode = "422", description = "Agent could not complete the task",
                     content = @Content(schema = @Schema(implementation = ApiError.class)))
     })
     @PostMapping("/task")
-    public TaskResponse createTask(@Valid @RequestBody TaskRequest request) {
+    public TaskRecordDto createTask(@Valid @RequestBody TaskRequest request) {
         return service.solve(request.task());
     }
 
     @Operation(summary = "Fetch a stored task by id")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Found",
-                    content = @Content(schema = @Schema(implementation = TaskResponse.class))),
+                    content = @Content(schema = @Schema(implementation = TaskRecordDto.class))),
             @ApiResponse(responseCode = "404", description = "Unknown task id",
                     content = @Content(schema = @Schema(implementation = ApiError.class)))
     })
     @GetMapping("/tasks/{taskId}")
-    public TaskResponse getTask(@PathVariable String taskId) {
+    public TaskRecordDto getTask(@PathVariable String taskId) {
         return service.get(taskId);
     }
 

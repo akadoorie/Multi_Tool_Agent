@@ -165,7 +165,7 @@ model and tool call; the rollup's total latency is the whole-task wall time.
 | `TaskRecord`  | Stored domain record (source of truth in `tasks.jsonl`).                               |
 | `TraceStep`   | One ordered step: `model_call` (thought + tokens), `tool` (name/input/output), or `final_answer`. |
 | `TaskRollup`  | Per-task totals: latency, input/output tokens, iterations.                            |
-| `TaskRequest` / `TaskResponse` / `ApiError` | API DTOs, kept separate from the stored model.          |
+| `TaskRequest` / `TaskRecordDto` / `ApiError` | API DTOs, kept separate from the stored model.         |
 
 The API and stored JSON use `snake_case` (`task_id`, `final_answer`, …).
 

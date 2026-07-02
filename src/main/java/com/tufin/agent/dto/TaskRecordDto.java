@@ -19,7 +19,7 @@ import java.util.List;
  * @param trace       ordered execution trace.
  * @param rollup      latency/token totals for the task.
  */
-public record TaskResponse(
+public record TaskRecordDto(
         @Schema(description = "Server-generated task id.", example = "5f2c1e9a-1c2b-4a7d-9e10-3c4f5a6b7c8d")
         String taskId,
         @Schema(description = "The original natural-language task.", example = "What is 15% of 240?")

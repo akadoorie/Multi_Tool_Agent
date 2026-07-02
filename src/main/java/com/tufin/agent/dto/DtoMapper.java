@@ -2,14 +2,14 @@ package com.tufin.agent.dto;
 
 import com.tufin.agent.model.TaskRecord;
 
-/** Maps the internal {@link TaskRecord} to the outward-facing {@link TaskResponse}. */
+/** Maps the internal {@link TaskRecord} to the outward-facing {@link TaskRecordDto}. */
 public final class DtoMapper {
 
     private DtoMapper() {
     }
 
-    public static TaskResponse toResponse(TaskRecord record) {
-        return new TaskResponse(
+    public static TaskRecordDto toDto(TaskRecord record) {
+        return new TaskRecordDto(
                 record.taskId(),
                 record.task(),
                 record.finalAnswer(),

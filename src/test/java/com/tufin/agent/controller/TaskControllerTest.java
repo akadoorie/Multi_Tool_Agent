@@ -9,7 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.tufin.agent.dto.PagedTasksResponse;
-import com.tufin.agent.dto.TaskResponse;
+import com.tufin.agent.dto.TaskRecordDto;
 import com.tufin.agent.exception.TaskNotFoundException;
 import com.tufin.agent.model.TaskRollup;
 import com.tufin.agent.service.AgentService;
@@ -34,8 +34,8 @@ class TaskControllerTest {
     @MockitoBean
     AgentService service;
 
-    private TaskResponse sample(String id) {
-        return new TaskResponse(id, "what is 2+2", "42", List.of(), new TaskRollup(1, 1, 1, 1));
+    private TaskRecordDto sample(String id) {
+        return new TaskRecordDto(id, "what is 2+2", "42", List.of(), new TaskRollup(1, 1, 1, 1));
     }
 
     @Test

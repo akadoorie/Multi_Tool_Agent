@@ -4,7 +4,7 @@ import com.tufin.agent.agent.AgentLoop;
 import com.tufin.agent.agent.LoopResult;
 import com.tufin.agent.dto.DtoMapper;
 import com.tufin.agent.dto.PagedTasksResponse;
-import com.tufin.agent.dto.TaskResponse;
+import com.tufin.agent.dto.TaskRecordDto;
 import com.tufin.agent.exception.TaskNotFoundException;
 import com.tufin.agent.model.TaskRecord;
 import com.tufin.agent.repository.TaskRepository;
@@ -39,7 +39,7 @@ public class AgentService {
     }
 
     /** Runs the agent for a new task, persists the result, and returns it. */
-    public TaskResponse solve(String task) {
+    public TaskRecordDto solve(String task) {
         String taskId = UUID.randomUUID().toString();
         MDC.put(MDC_TASK_ID, taskId);
         try {
@@ -51,16 +51,16 @@ public class AgentService {
             log.info("Stored task {} ({} input / {} output tokens, {} ms)", taskId,
                     result.rollup().totalInputTokens(), result.rollup().totalOutputTokens(),
                     result.rollup().totalLatencyMs());
-            return DtoMapper.toResponse(record);
+            return DtoMapper.toDto(record);
         } finally {
             MDC.remove(MDC_TASK_ID);
         }
     }
 
     /** Returns a stored task, or throws {@link TaskNotFoundException} (mapped to 404). */
-    public TaskResponse get(String taskId) {
+    public TaskRecordDto get(String taskId) {
         return repository.findById(taskId)
-                .map(DtoMapper::toResponse)
+                .map(DtoMapper::toDto)
                 .orElseThrow(() -> new TaskNotFoundException(taskId));
     }
 
@@ -86,8 +86,8 @@ public class AgentService {
         int from = (int) Math.min((long) page * size, totalElements);
         int to = (int) Math.min((long) from + size, totalElements);
 
-        List<TaskResponse> items = ordered.subList(from, to).stream()
-                .map(DtoMapper::toResponse)
+        List<TaskRecordDto> items = ordered.subList(from, to).stream()
+                .map(DtoMapper::toDto)
                 .toList();
         return new PagedTasksResponse(items, page, size, totalElements, totalPages);
     }

@@ -6,7 +6,7 @@ import static org.mockito.Mockito.when;
 
 import com.tufin.agent.agent.AgentLoop;
 import com.tufin.agent.dto.PagedTasksResponse;
-import com.tufin.agent.dto.TaskResponse;
+import com.tufin.agent.dto.TaskRecordDto;
 import com.tufin.agent.model.TaskRecord;
 import com.tufin.agent.model.TaskRollup;
 import com.tufin.agent.repository.TaskRepository;
@@ -43,11 +43,11 @@ class AgentServiceTest {
         assertThat(page0.size()).isEqualTo(2);
         assertThat(page0.totalElements()).isEqualTo(3);
         assertThat(page0.totalPages()).isEqualTo(2);
-        assertThat(page0.items()).extracting(TaskResponse::taskId).containsExactly("a", "b");
+        assertThat(page0.items()).extracting(TaskRecordDto::taskId).containsExactly("a", "b");
 
         // Last, partial page.
         PagedTasksResponse page1 = service.list(1, 2);
-        assertThat(page1.items()).extracting(TaskResponse::taskId).containsExactly("c");
+        assertThat(page1.items()).extracting(TaskRecordDto::taskId).containsExactly("c");
         assertThat(page1.totalPages()).isEqualTo(2);
     }
 
@@ -59,7 +59,7 @@ class AgentServiceTest {
 
         PagedTasksResponse page = service.list(0, 10);
 
-        assertThat(page.items()).extracting(TaskResponse::taskId).containsExactly("x", "y");
+        assertThat(page.items()).extracting(TaskRecordDto::taskId).containsExactly("x", "y");
     }
 
     @Test

@@ -16,7 +16,7 @@ import java.util.List;
  */
 public record PagedTasksResponse(
         @Schema(description = "The tasks on this page, newest first.")
-        List<TaskResponse> items,
+        List<TaskRecordDto> items,
         @Schema(description = "0-based index of this page.", example = "0")
         int page,
         @Schema(description = "Number of items per page.", example = "20")
