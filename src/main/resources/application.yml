@@ -35,6 +35,9 @@ app:
       url: https://api.frankfurter.app
   persistence:
     data-file: ./data/tasks.jsonl
+  pagination:
+    default-size: 20
+    max-size: 100
 
 logging:
   level:

@@ -231,6 +231,8 @@ All tunables live in `src/main/resources/application.yml`, bound to the typed `A
 | `app.tools.search.wiki-*`    | Wikipedia REST search/summary URLs                  | Wikipedia fallback.                             |
 | `app.tools.currency.url`     | `https://api.frankfurter.app`                        | Frankfurter live-rate API.                      |
 | `app.persistence.data-file`  | `./data/tasks.jsonl`                                 | Task store path (mounted volume in Docker).    |
+| `app.pagination.default-size`| `20`                                                 | `GET /tasks` page size when `size` is omitted.  |
+| `app.pagination.max-size`    | `100`                                                | Largest `size` a caller may request (else 400). |
 
 The API key is **never** in config; `application.yml` references `${ANTHROPIC_API_KEY}`, which Spring
 resolves from the environment and Docker Compose injects from `.env`.

@@ -9,7 +9,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * are no magic numbers scattered through the code.
  */
 @ConfigurationProperties(prefix = "app")
-public record AppProperties(Agent agent, Http http, Tools tools, Persistence persistence) {
+public record AppProperties(Agent agent, Http http, Tools tools, Persistence persistence,
+        Pagination pagination) {
 
     /**
      * Agent / LLM settings.
@@ -55,5 +56,14 @@ public record AppProperties(Agent agent, Http http, Tools tools, Persistence per
 
     /** File-persistence settings. */
     public record Persistence(String dataFile) {
+    }
+
+    /**
+     * {@code GET /tasks} paging limits.
+     *
+     * @param defaultSize page size used when the caller omits {@code size}.
+     * @param maxSize     largest {@code size} a caller may request (larger is rejected with 400).
+     */
+    public record Pagination(int defaultSize, int maxSize) {
     }
 }

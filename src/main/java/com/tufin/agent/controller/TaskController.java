@@ -1,9 +1,11 @@
 package com.tufin.agent.controller;
 
+import com.tufin.agent.config.AppProperties;
 import com.tufin.agent.dto.ApiError;
 import com.tufin.agent.dto.PagedTasksResponse;
 import com.tufin.agent.dto.TaskRequest;
 import com.tufin.agent.dto.TaskResponse;
+import com.tufin.agent.exception.InvalidRequestException;
 import com.tufin.agent.service.AgentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -12,9 +14,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
-import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,13 +23,14 @@ import org.springframework.web.bind.annotation.RestController;
 
 /** REST endpoints for submitting tasks and reading stored results. HTTP concerns only. */
 @RestController
-@Validated
 public class TaskController {
 
     private final AgentService service;
+    private final AppProperties props;
 
-    public TaskController(AgentService service) {
+    public TaskController(AgentService service, AppProperties props) {
         this.service = service;
+        this.props = props;
     }
 
     @Operation(
@@ -74,9 +74,18 @@ public class TaskController {
     @GetMapping("/tasks")
     public PagedTasksResponse listTasks(
             @Parameter(description = "0-based page index (>= 0).")
-            @RequestParam(defaultValue = "0") @Min(0) int page,
-            @Parameter(description = "Items per page (1-100).")
-            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return service.list(page, size);
+            @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Items per page. Defaults to app.pagination.default-size; "
+                    + "capped at app.pagination.max-size.")
+            @RequestParam(required = false) Integer size) {
+        // Default and bounds are config-driven (app.pagination.*), so they can't be @RequestParam
+        // defaults / @Max constants — resolve and validate them here instead.
+        int effectiveSize = (size == null) ? props.pagination().defaultSize() : size;
+        if (page < 0 || effectiveSize < 1 || effectiveSize > props.pagination().maxSize()) {
+            throw new InvalidRequestException(
+                    "Invalid paging: page must be >= 0 and size must be between 1 and "
+                            + props.pagination().maxSize() + ".");
+        }
+        return service.list(page, effectiveSize);
     }
 }

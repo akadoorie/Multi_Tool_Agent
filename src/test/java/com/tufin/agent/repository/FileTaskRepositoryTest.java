@@ -33,7 +33,8 @@ class FileTaskRepositoryTest {
         return new AppProperties(
                 new AppProperties.Agent("claude-sonnet-4-6", 8, 8192, 0.0, true),
                 null, null,
-                new AppProperties.Persistence(file.toString()));
+                new AppProperties.Persistence(file.toString()),
+                null);
     }
 
     private TaskRecord record(String id) {
