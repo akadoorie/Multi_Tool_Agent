@@ -115,8 +115,23 @@ public class AgentLoop {
                 // what the model produced. Tool failures still count as "used" (the error is a real,
                 // grounded observation), so a legitimate "the tool failed" reply is preserved.
                 boolean anyToolUsed = trace.stream().anyMatch(step -> "tool".equals(step.type()));
-                String finalAnswer = anyToolUsed ? assistantText : UNSUPPORTED;
-                trace.add(TraceStep.finalAnswer(++stepIndex, iteration, finalAnswer, modelLatencyMs, usage));
+                String finalAnswer;
+                if (anyToolUsed) {
+                    finalAnswer = assistantText;
+                    trace.add(TraceStep.finalAnswer(++stepIndex, iteration, finalAnswer, modelLatencyMs, usage));
+                } else if (assistantText != null && !assistantText.isBlank()) {
+                    // Out of scope, but the model explained why. Keep that explanation as a `reasoning`
+                    // step (with this turn's latency + tokens) so the verdict is legible, then append a
+                    // synthetic `final_answer` of "Unsupported" (latency 0, no tokens — it is not a
+                    // separate model call, which also avoids implying double token usage).
+                    finalAnswer = UNSUPPORTED;
+                    trace.add(TraceStep.reasoning(++stepIndex, iteration, assistantText, modelLatencyMs, usage));
+                    trace.add(TraceStep.finalAnswer(++stepIndex, iteration, UNSUPPORTED, 0, null));
+                } else {
+                    // Out of scope with no explanation: a single "Unsupported" verdict.
+                    finalAnswer = UNSUPPORTED;
+                    trace.add(TraceStep.finalAnswer(++stepIndex, iteration, UNSUPPORTED, modelLatencyMs, usage));
+                }
                 log.info("Task completed in {} iteration(s){}", iteration,
                         anyToolUsed ? "" : " with no tool used -> Unsupported");
                 return new LoopResult(finalAnswer, List.copyOf(trace),

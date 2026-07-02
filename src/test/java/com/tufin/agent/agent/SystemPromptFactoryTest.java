@@ -42,4 +42,12 @@ class SystemPromptFactoryTest {
         // a bare date/time question has no supporting tool and must be Unsupported.
         assertThat(prompt).contains("date, time, or clock");
     }
+
+    @Test
+    void limitsUnitConverterToItsFourCategoriesAndFlagsOtherConversionsOutOfScope() {
+        String prompt = factory.build();
+
+        assertThat(prompt).contains("length", "weight", "temperature", "currency");
+        assertThat(prompt).containsIgnoringCase("out of scope");
+    }
 }

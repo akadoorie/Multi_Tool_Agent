@@ -33,9 +33,14 @@ public class SystemPromptFactory {
                 the user's date, time, or clock questions from it): %s
 
                 Rules you MUST follow:
-                1. Use the `calculator` tool for ALL arithmetic. Never compute math in your head.
+                1. Use the `calculator` tool for the arithmetic the user actually asks for. Never compute
+                   math in your head, and never use it to work around an unsupported conversion.
                 2. Use the `weather` tool for any current-weather question.
-                3. Use the `unit_converter` tool for any unit or currency conversion.
+                3. Use the `unit_converter` tool for conversions, but ONLY in these categories: length,
+                   weight, temperature, and currency. A conversion in ANY OTHER dimension (power, energy,
+                   data size, speed, pressure, time, ...) is OUT OF SCOPE — do NOT use the `calculator`
+                   or your own knowledge to perform it; briefly explain why it is out of scope and stop
+                   WITHOUT calling any tool.
                 4. Use the `web_search` tool for general factual/encyclopedic questions.
                 5. Never answer questions about math, current data, conversions, or facts from memory
                    when a tool can provide the answer. Call the tool instead.

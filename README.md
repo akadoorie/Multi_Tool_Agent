@@ -136,7 +136,10 @@ framework's automatic tool execution, because the assignment needs a trace of ev
   `Unsupported` regardless of what the model produced. The prompt handles the clean case; the code gate
   guarantees the rule even if the model tries to answer from memory. (The injected date/time is
   *internal-only* — it anchors "now"/"today" for the weather tool — so a bare date/time question is
-  itself out of scope.)
+  itself out of scope.) When the gate fires and the model gave an explanation, that text is kept as a
+  separate `reasoning` step before the `Unsupported` verdict, so the trace stays legible — e.g. a
+  power conversion (W→kW), which `unit_converter` doesn't support, is refused with a reason rather
+  than quietly routed through the `calculator`.
 
 ### Reading Claude's reply — why we aggregate `Generation`s
 
@@ -163,7 +166,7 @@ model and tool call; the rollup's total latency is the whole-task wall time.
 | Type          | Role                                                                                  |
 |---------------|---------------------------------------------------------------------------------------|
 | `TaskRecord`  | Stored domain record (source of truth in `tasks.jsonl`).                               |
-| `TraceStep`   | One ordered step: `model_call` (thought + tokens), `tool` (name/input/output), or `final_answer`. |
+| `TraceStep`   | One ordered step: `model_call`, `tool` (name/input/output), `reasoning` (explanation preceding an `Unsupported` verdict), or `final_answer`. |
 | `TaskRollup`  | Per-task totals: latency, input/output tokens, iterations.                            |
 | `TaskRequest` / `TaskRecordDto` / `ApiError` | API DTOs, kept separate from the stored model.         |
 

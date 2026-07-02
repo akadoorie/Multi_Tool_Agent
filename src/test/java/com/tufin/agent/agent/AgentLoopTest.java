@@ -89,18 +89,42 @@ class AgentLoopTest {
     }
 
     @Test
-    void returnsUnsupportedWhenNoToolIsUsed() {
-        // Scope gate: an answer grounded in no tool is out of scope, so the loop terminates on the
-        // first text turn and returns exactly "Unsupported" — even when the model produced a
-        // plausible-looking reply from its own knowledge.
-        when(chatModel.call(any(Prompt.class))).thenReturn(textTurn("Sure! The answer is 42.", 5, 3));
+    void returnsUnsupportedWithReasoningStepWhenNoToolIsUsed() {
+        // Scope gate: no tool used -> out of scope. The model's explanation is preserved as a
+        // `reasoning` step and the verdict is a synthetic `final_answer` of exactly "Unsupported".
+        String explanation = "Power conversion is out of scope; unit_converter only supports "
+                + "length/weight/temperature/currency.";
+        when(chatModel.call(any(Prompt.class))).thenReturn(textTurn(explanation, 5, 3));
 
-        LoopResult result = loop(8).run("a task no tool can handle");
+        LoopResult result = loop(8).run("convert 1000000 watts to kilowatts");
+
+        assertThat(result.finalAnswer()).isEqualTo("Unsupported");
+        assertThat(result.trace()).extracting(TraceStep::type)
+                .containsExactly("reasoning", "final_answer");
+
+        TraceStep reasoning = result.trace().get(0);
+        assertThat(reasoning.thought()).contains("out of scope").isNotEqualTo("Unsupported");
+
+        TraceStep finalStep = result.trace().get(1);
+        assertThat(finalStep.thought()).isEqualTo("Unsupported");
+        assertThat(finalStep.latencyMs()).isZero();
+        assertThat(finalStep.tokens()).isNull();
+
+        assertThat(result.rollup().iterations()).isEqualTo(1);
+        verify(chatModel, times(1)).call(any(Prompt.class));
+    }
+
+    @Test
+    void returnsSingleUnsupportedStepWhenNoToolAndNoText() {
+        // No tool AND no explanatory text -> just the synthetic final_answer, no reasoning step.
+        when(chatModel.call(any(Prompt.class))).thenReturn(textTurn("", 5, 1));
+
+        LoopResult result = loop(8).run("something out of scope");
 
         assertThat(result.finalAnswer()).isEqualTo("Unsupported");
         assertThat(result.trace()).extracting(TraceStep::type).containsExactly("final_answer");
+        assertThat(result.trace().get(0).thought()).isEqualTo("Unsupported");
         assertThat(result.rollup().iterations()).isEqualTo(1);
-        verify(chatModel, times(1)).call(any(Prompt.class));
     }
 
     @Test

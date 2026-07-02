@@ -11,13 +11,16 @@ package com.tufin.agent.model;
  *       tool's own latency. Tokens are {@code null} here on purpose: the tokens belong to the
  *       {@code model_call} that requested the tool, so attaching them to each tool step would make
  *       two tools in one turn look like double-counted usage.</li>
+ *   <li>{@code reasoning} &mdash; a model turn that produced explanatory text but requested no tool.
+ *       Precedes a synthetic {@code final_answer} of {@code "Unsupported"}; carries that turn's
+ *       reasoning text, latency, and token usage.</li>
  *   <li>{@code final_answer} &mdash; the terminating Claude turn with no tool calls. Carries the
  *       final text, latency, and token usage.</li>
  * </ul>
  *
  * @param index      1-based position of this step within the whole trace.
  * @param iteration  1-based reason&rarr;act&rarr;observe cycle this step belongs to.
- * @param type       {@code "model_call"}, {@code "tool"}, or {@code "final_answer"}.
+ * @param type       {@code "model_call"}, {@code "tool"}, {@code "reasoning"}, or {@code "final_answer"}.
  * @param thought    assistant reasoning text (null for a {@code tool} step).
  * @param tool       tool name (null unless {@code type == "tool"}).
  * @param toolInput  parsed tool input (null unless {@code type == "tool"}).
@@ -50,6 +53,12 @@ public record TraceStep(
     public static TraceStep tool(int index, int iteration, String tool, Object input, Object output,
             long latencyMs) {
         return new TraceStep(index, iteration, "tool", null, tool, input, output, latencyMs, null);
+    }
+
+    /** A model turn that produced reasoning text but requested no tool (precedes an Unsupported verdict). */
+    public static TraceStep reasoning(int index, int iteration, String thought, long latencyMs,
+            TokenUsage tokens) {
+        return new TraceStep(index, iteration, "reasoning", thought, null, null, null, latencyMs, tokens);
     }
 
     /** The terminating model turn that produced the final answer. */
