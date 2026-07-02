@@ -11,6 +11,19 @@ JSON Lines file, and latency + token usage are first-class outputs.
 
 ---
 
+## Assumptions
+
+Assumptions made to scope this exercise:
+
+1. **Tools are dedicated services the agent delegates to**, not work the LLM does in its head (some remote APIs, some local libraries).
+2. **Tools are free and keyless** — only the LLM needs an API key.
+3. **Out-of-scope tasks answer `Unsupported`** — if no tool is invoked (e.g. "what time is it?"), the agent refuses rather than guessing.
+4. **Single-turn, self-contained tasks** — no memory across requests.
+5. **Synchronous, blocking response, but tasks still run in parallel** — each caller waits for its own result; the server still handles many requests concurrently.
+6. **A capable, tool-following model** — trusted to pick the right tool and produce valid inputs (hence a current Claude model).
+
+---
+
 ## 1. Architecture overview
 
 `POST /task` enters `TaskController`, which delegates to `AgentService`. `AgentService` runs an
