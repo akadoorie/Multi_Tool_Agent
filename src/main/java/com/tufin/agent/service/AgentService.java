@@ -3,12 +3,14 @@ package com.tufin.agent.service;
 import com.tufin.agent.agent.AgentLoop;
 import com.tufin.agent.agent.LoopResult;
 import com.tufin.agent.dto.DtoMapper;
+import com.tufin.agent.dto.PagedTasksResponse;
 import com.tufin.agent.dto.TaskResponse;
 import com.tufin.agent.exception.TaskNotFoundException;
 import com.tufin.agent.model.TaskRecord;
 import com.tufin.agent.repository.TaskRepository;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -62,8 +64,31 @@ public class AgentService {
                 .orElseThrow(() -> new TaskNotFoundException(taskId));
     }
 
-    /** Lists all stored tasks (showcases the queryable store). */
-    public List<TaskResponse> list() {
-        return repository.findAll().stream().map(DtoMapper::toResponse).toList();
+    /**
+     * Returns one page of stored tasks, newest first. The whole set is sorted by {@code createdAt}
+     * descending (tie-broken by {@code taskId} ascending) <em>before</em> slicing, because the
+     * repository's in-memory index has no defined iteration order &mdash; paginating over that
+     * directly would let pages overlap or drop records. The dataset is small and fully in-memory, so
+     * sorting here is cheap and keeps the {@link TaskRepository} interface minimal.
+     *
+     * @param page 0-based page index (validated {@code >= 0} at the controller).
+     * @param size page size (validated {@code 1..100} at the controller).
+     */
+    public PagedTasksResponse list(int page, int size) {
+        List<TaskRecord> ordered = repository.findAll().stream()
+                .sorted(Comparator.comparing(TaskRecord::createdAt).reversed()
+                        .thenComparing(TaskRecord::taskId))
+                .toList();
+
+        int totalElements = ordered.size();
+        int totalPages = (int) Math.ceil((double) totalElements / size);
+        // Long math so a huge page index can't overflow before we clamp it to the list bounds.
+        int from = (int) Math.min((long) page * size, totalElements);
+        int to = (int) Math.min((long) from + size, totalElements);
+
+        List<TaskResponse> items = ordered.subList(from, to).stream()
+                .map(DtoMapper::toResponse)
+                .toList();
+        return new PagedTasksResponse(items, page, size, totalElements, totalPages);
     }
 }

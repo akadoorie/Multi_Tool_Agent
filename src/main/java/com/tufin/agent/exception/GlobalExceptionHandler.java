@@ -1,6 +1,8 @@
 package com.tufin.agent.exception;
 
 import com.tufin.agent.dto.ApiError;
+import jakarta.validation.ConstraintViolationException;
+import jakarta.validation.Path;
 import java.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,6 +42,20 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, message);
     }
 
+    /**
+     * Constraint violations on request-parameter constraints (e.g. {@code @Min}/{@code @Max} on the
+     * {@code GET /tasks} paging params, via {@code @Validated} on the controller). These are a client
+     * error, mapped to the same 400 {@link ApiError} shape as body validation.
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiError> handleConstraintViolation(ConstraintViolationException e) {
+        String message = e.getConstraintViolations().stream()
+                .findFirst()
+                .map(violation -> leafNode(violation.getPropertyPath()) + ": " + violation.getMessage())
+                .orElse("Invalid request parameters");
+        return build(HttpStatus.BAD_REQUEST, message);
+    }
+
     @ExceptionHandler({ToolExecutionException.class, PersistenceException.class})
     public ResponseEntity<ApiError> handleServerSide(RuntimeException e) {
         log.error("Server-side failure", e);
@@ -58,6 +74,15 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleUnexpected(Exception e) {
         log.error("Unhandled exception", e);
         return build(HttpStatus.INTERNAL_SERVER_ERROR, "Internal error");
+    }
+
+    /** The trailing node of a violation's property path is the offending parameter (e.g. "size"). */
+    private static String leafNode(Path propertyPath) {
+        String name = "parameter";
+        for (Path.Node node : propertyPath) {
+            name = node.getName();
+        }
+        return name;
     }
 
     private ResponseEntity<ApiError> build(HttpStatus status, String message) {

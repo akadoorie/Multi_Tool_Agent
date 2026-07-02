@@ -279,7 +279,7 @@ type is registered with the JSON converter.
 ./mvnw test        # or: mvn test
 ```
 
-26 deterministic tests, none of which call the live LLM:
+33 deterministic tests, none of which call the live LLM:
 
 - **Tool unit tests** — calculator (precedence, invalid expr, non-finite, div-by-zero), unit
   conversions (°C→°F, km→m), currency via a stubbed rate, and the web-search DDG→Wikipedia fallback
@@ -290,7 +290,10 @@ type is registered with the JSON converter.
 - **System-prompt test** — the built prompt injects the current date (fixed `Clock`), the four tool
   rules, the out-of-scope → `Unsupported` scope rule, and the internal-only-timestamp rule (so bare
   date/time questions are out of scope).
-- **Controller tests** (MockMvc) — `POST /task`, `GET /tasks/{id}` round-trip + 404, `GET /health`.
+- **Service test** — `GET /tasks` paging: newest-first ordering (`createdAt` desc, `taskId` tie-break)
+  over unordered repo data, slicing, the last partial page, out-of-range, and empty store.
+- **Controller tests** (MockMvc) — `POST /task`, `GET /tasks/{id}` round-trip + 404, `GET /tasks`
+  paging (default params, pass-through, invalid `page`/`size` → 400), `GET /health`.
 - **Repository test** — save/find round-trip and index rebuild from the file on restart.
 
 > **Live end-to-end smoke test (the "spike").** The automated tests mock `ChatModel`, so they prove the
