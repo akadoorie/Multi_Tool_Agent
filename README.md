@@ -191,6 +191,17 @@ The API and stored JSON use `snake_case` (`task_id`, `final_answer`, …).
 }
 ```
 
+### Trace fields
+
+Every entry in `trace` carries two ordering fields:
+
+- **`index`** — the step's 1-based position in the whole trace. It increments on *every* step
+  (`model_call`, `tool`, or `final_answer`), so each step has a unique, sequential id.
+- **`iteration`** — which reason→act→observe cycle the step belongs to. It increments once per model
+  call, so several steps can share one `iteration`: above, the `model_call` and both `tool` steps are
+  all `iteration: 1`, while the `final_answer` (a second model turn) is `iteration: 2`.
+  `rollup.iterations` equals the number of model calls.
+
 ---
 
 ## 5. Design patterns & SOLID
