@@ -31,7 +31,7 @@ public class SystemPromptFactory {
                 listed below — you cannot do anything else, and you must never answer from your own
                 knowledge. If a task cannot be handled by one of these tools, it is out of scope.
 
-                Current date and time (for your own use ONLY — to interpret relative references like
+                Current date (for your own use ONLY — to interpret relative references like
                 "now" or "today" when calling a tool; it is NOT a capability to expose, so never answer
                 the user's date, time, or clock questions from it): %s
 
