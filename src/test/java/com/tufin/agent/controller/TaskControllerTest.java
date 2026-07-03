@@ -61,6 +61,17 @@ class TaskControllerTest {
     }
 
     @Test
+    void malformedJsonBodyReturns400() throws Exception {
+        // The exact bad payload a user hit in Swagger: a missing quote makes the value `20^2` unparseable.
+        // That's a client error and must be a 400, not a 500 from the catch-all handler.
+        mockMvc.perform(post("/task")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"task\": 20^2\" }"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
     void getTaskRoundTripsAndReturns404ForUnknownId() throws Exception {
         when(service.get("id-1")).thenReturn(sample("id-1"));
         when(service.get("nope")).thenThrow(new TaskNotFoundException("nope"));

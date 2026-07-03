@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -48,6 +49,18 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(InvalidRequestException.class)
     public ResponseEntity<ApiError> handleInvalidRequest(InvalidRequestException e) {
         return build(HttpStatus.BAD_REQUEST, e.getMessage());
+    }
+
+    /**
+     * The request body isn't readable as the expected JSON (e.g. a missing quote, so {@code 20^2}
+     * parses as a bare number). That's a client mistake, so it maps to 400 rather than falling through
+     * to the catch-all 500. The parser's message is not echoed back &mdash; it can be noisy and leaks
+     * internals; a stable hint is friendlier.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiError> handleUnreadable(HttpMessageNotReadableException e) {
+        log.debug("Malformed request body: {}", e.getMessage());
+        return build(HttpStatus.BAD_REQUEST, "Malformed request body: expected JSON like {\"task\": \"...\"}.");
     }
 
     @ExceptionHandler({ToolExecutionException.class, PersistenceException.class})
