@@ -5,7 +5,7 @@ that reasons step-by-step and calls **real tools** to solve it, and returns a fi
 **structured trace** of every reasoning step and tool call. All activity is persisted to a queryable
 JSON Lines file, and latency + token usage are first-class outputs.
 
-- **Java 21 · Spring Boot 3.4 · Spring AI 1.0 (Anthropic) · Maven · Docker**
+- **Java 21 · Spring Boot 3.4 · Spring AI 1.1 (Anthropic) · Maven · Docker**
 - Tools: **Calculator, Weather, Web Search, Unit/Currency Converter** (all real, keyless except the LLM)
 - Persistence: **file-only** (append-only JSONL + in-memory index) — no database
 
