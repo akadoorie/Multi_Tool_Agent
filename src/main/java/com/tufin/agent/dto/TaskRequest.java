@@ -20,7 +20,6 @@ public record TaskRequest(
 
         @Schema(
                 description = "Optional: id of an existing conversation to continue. Omit to start a "
-                        + "new one.",
-                example = "5f2c1e9a-1c2b-4a7d-9e10-3c4f5a6b7c8d")
+                        + "new one.")
         String conversationId) {
 }
