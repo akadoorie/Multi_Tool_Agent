@@ -1,5 +1,7 @@
 package com.tufin.agent.model;
 
+import java.util.List;
+
 /**
  * One ordered entry in a task's execution trace. Steps come in three shapes, distinguished by
  * {@code type}:
@@ -15,12 +17,15 @@ package com.tufin.agent.model;
  *       Precedes a synthetic {@code final_answer} of {@code "Unsupported"}; carries that turn's
  *       reasoning text, latency, and token usage.</li>
  *   <li>{@code final_answer} &mdash; the terminating Claude turn with no tool calls. Carries the
- *       final text, latency, and token usage.</li>
+ *       final text, latency, token usage, and {@code toolsUsed} &mdash; the distinct tools the task
+ *       invoked, so the answer text itself can stay clean.</li>
  * </ul>
  *
  * @param index      1-based position of this step within the whole trace.
  * @param iteration  1-based reason&rarr;act&rarr;observe cycle this step belongs to.
  * @param type       {@code "model_call"}, {@code "tool"}, {@code "reasoning"}, or {@code "final_answer"}.
+ * @param toolsUsed  distinct tools the task invoked, in first-use order; only set on a tool-grounded
+ *                   {@code final_answer} (null on other steps and on an {@code Unsupported} answer).
  * @param thought    assistant reasoning text (null for a {@code tool} step).
  * @param tool       tool name (null unless {@code type == "tool"}).
  * @param toolInput  parsed tool input (null unless {@code type == "tool"}).
@@ -32,6 +37,7 @@ public record TraceStep(
         int index,
         int iteration,
         String type,
+        List<String> toolsUsed,
         String thought,
         String tool,
         Object toolInput,
@@ -46,24 +52,27 @@ public record TraceStep(
     /** A model turn that requested tools. */
     public static TraceStep modelCall(int index, int iteration, String thought, long latencyMs,
             TokenUsage tokens) {
-        return new TraceStep(index, iteration, "model_call", thought, null, null, null, latencyMs, tokens);
+        return new TraceStep(index, iteration, "model_call", null, thought, null, null, null, latencyMs, tokens);
     }
 
     /** A single tool execution (tokens intentionally omitted &mdash; see the class Javadoc). */
     public static TraceStep tool(int index, int iteration, String tool, Object input, Object output,
             long latencyMs) {
-        return new TraceStep(index, iteration, "tool", null, tool, input, output, latencyMs, null);
+        return new TraceStep(index, iteration, "tool", null, null, tool, input, output, latencyMs, null);
     }
 
     /** A model turn that produced reasoning text but requested no tool (precedes an Unsupported verdict). */
     public static TraceStep reasoning(int index, int iteration, String thought, long latencyMs,
             TokenUsage tokens) {
-        return new TraceStep(index, iteration, "reasoning", thought, null, null, null, latencyMs, tokens);
+        return new TraceStep(index, iteration, "reasoning", null, thought, null, null, null, latencyMs, tokens);
     }
 
-    /** The terminating model turn that produced the final answer. */
-    public static TraceStep finalAnswer(int index, int iteration, String thought, long latencyMs,
-            TokenUsage tokens) {
-        return new TraceStep(index, iteration, "final_answer", thought, null, null, null, latencyMs, tokens);
+    /**
+     * The terminating model turn that produced the final answer. {@code toolsUsed} lists the distinct
+     * tools the task invoked (null when none were &mdash; an {@code Unsupported} answer).
+     */
+    public static TraceStep finalAnswer(int index, int iteration, List<String> toolsUsed, String thought,
+            long latencyMs, TokenUsage tokens) {
+        return new TraceStep(index, iteration, "final_answer", toolsUsed, thought, null, null, null, latencyMs, tokens);
     }
 }

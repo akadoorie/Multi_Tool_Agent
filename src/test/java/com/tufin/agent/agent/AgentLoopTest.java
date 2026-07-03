@@ -66,6 +66,10 @@ class AgentLoopTest {
         TraceStep toolStep = result.trace().get(1);
         assertThat(toolStep.tool()).isEqualTo("calculator");
         assertThat(((ToolResult) toolStep.toolOutput()).ok()).isTrue();
+
+        TraceStep finalStep = result.trace().get(2);
+        assertThat(finalStep.type()).isEqualTo("final_answer");
+        assertThat(finalStep.toolsUsed()).containsExactly("calculator");
         verify(chatModel, times(2)).call(any(Prompt.class));
     }
 
@@ -109,6 +113,7 @@ class AgentLoopTest {
         assertThat(finalStep.thought()).isEqualTo("Unsupported");
         assertThat(finalStep.latencyMs()).isZero();
         assertThat(finalStep.tokens()).isNull();
+        assertThat(finalStep.toolsUsed()).isNull();
 
         assertThat(result.rollup().iterations()).isEqualTo(1);
         verify(chatModel, times(1)).call(any(Prompt.class));
@@ -124,6 +129,7 @@ class AgentLoopTest {
         assertThat(result.finalAnswer()).isEqualTo("Unsupported");
         assertThat(result.trace()).extracting(TraceStep::type).containsExactly("final_answer");
         assertThat(result.trace().get(0).thought()).isEqualTo("Unsupported");
+        assertThat(result.trace().get(0).toolsUsed()).isNull();
         assertThat(result.rollup().iterations()).isEqualTo(1);
     }
 

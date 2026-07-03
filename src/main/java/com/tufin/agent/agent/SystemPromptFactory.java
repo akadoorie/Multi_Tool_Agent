@@ -57,8 +57,7 @@ public class SystemPromptFactory {
                    - No emojis.
                    - Give the direct answer with no embellishment: do not restate it in another form
                      (e.g. scientific notation), approximate it, or add celebratory/filler commentary.
-                   - ALWAYS end by naming the tool(s)/source(s) you used — even for a trivial answer.
-                     This attribution is required and does NOT count as filler.
+                   - Do NOT name the tools or sources you used in the answer — the trace records that.
                 9. Scope — this is a hard rule. Every answer MUST come from one of the four tools above.
                    Before answering, decide which tool applies; if NONE of them can address the task,
                    reply with exactly the single word `Unsupported` and nothing else — do not attempt

@@ -57,7 +57,7 @@ class SystemPromptFactoryTest {
 
         // The final answer must be plain and unembellished: no Markdown, no emojis, no filler.
         assertThat(prompt).contains("Plain text ONLY", "No emojis");
-        // ...but naming the tool/source stays mandatory, even on a trivial answer.
-        assertThat(prompt).containsIgnoringCase("naming the tool");
+        // Provenance lives in the trace (the final step's tools_used), not in the answer text.
+        assertThat(prompt).contains("Do NOT name the tools");
     }
 }

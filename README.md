@@ -180,7 +180,7 @@ fields surface whether caching is engaging rather than leaving it a silent no-op
 | Type          | Role                                                                                  |
 |---------------|---------------------------------------------------------------------------------------|
 | `TaskRecord`  | Stored domain record (source of truth in `tasks.jsonl`).                               |
-| `TraceStep`   | One ordered step: `model_call`, `tool` (name/input/output), `reasoning` (explanation preceding an `Unsupported` verdict), or `final_answer`. |
+| `TraceStep`   | One ordered step: `model_call`, `tool` (name/input/output), `reasoning` (explanation preceding an `Unsupported` verdict), or `final_answer` (carries `tools_used` — the distinct tools the task invoked). |
 | `TaskRollup`  | Per-task totals: latency, input/output tokens, iterations, and prompt-cache read/creation tokens. |
 | `TaskRequest` / `TaskRecordDto` / `ApiError` | API DTOs, kept separate from the stored model.         |
 
@@ -192,7 +192,7 @@ The API and stored JSON use `snake_case` (`task_id`, `final_answer`, …).
 {
   "task_id": "5f2c1e9a-…",
   "task": "What is 15% of 240, and what is the current weather in Tel Aviv?",
-  "final_answer": "15% of 240 is 36. The current weather in Tel Aviv is 29°C … (calculator, weather).",
+  "final_answer": "15% of 240 is 36. The current weather in Tel Aviv is 29°C, 61% humidity, 10 km/h wind.",
   "trace": [
     { "index": 1, "iteration": 1, "type": "model_call", "thought": "I'll compute the percentage…",
       "latency_ms": 900, "tokens": { "input_tokens": 620, "output_tokens": 40, "total_tokens": 660 } },
@@ -202,8 +202,9 @@ The API and stored JSON use `snake_case` (`task_id`, `final_answer`, …).
     { "index": 3, "iteration": 1, "type": "tool", "tool": "weather", "tool_input": { "city": "Tel Aviv" },
       "tool_output": { "ok": true, "data": { "temperature_c": 29.0, "source": "open-meteo.com" } },
       "latency_ms": 180 },
-    { "index": 4, "iteration": 2, "type": "final_answer", "thought": "15% of 240 is 36 …",
-      "latency_ms": 700, "tokens": { "input_tokens": 780, "output_tokens": 55, "total_tokens": 835 } }
+    { "index": 4, "iteration": 2, "type": "final_answer", "tools_used": ["calculator", "weather"],
+      "thought": "15% of 240 is 36 …", "latency_ms": 700,
+      "tokens": { "input_tokens": 780, "output_tokens": 55, "total_tokens": 835 } }
   ],
   "rollup": { "total_latency_ms": 2500, "total_input_tokens": 1400, "total_output_tokens": 95, "iterations": 2,
               "total_cache_read_input_tokens": 0, "total_cache_creation_input_tokens": 0 }
