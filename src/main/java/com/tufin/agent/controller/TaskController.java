@@ -10,7 +10,6 @@ import com.tufin.agent.service.AgentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -35,34 +34,22 @@ public class TaskController {
     }
 
     @Operation(
-            summary = "Submit a task",
+            summary = "Submit a task (starts a new conversation)",
             description = "Runs the agent loop against the given natural-language task and returns the "
-                    + "final answer plus the full reasoning/tool trace.")
+                    + "final answer plus the full reasoning/tool trace. The response includes a "
+                    + "`conversation_id`; pass it to POST /conversations/{conversation_id}/task to ask "
+                    + "follow-ups that reference this task.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Task solved",
                     content = @Content(schema = @Schema(implementation = TaskRecordDto.class))),
             @ApiResponse(responseCode = "400", description = "Blank/invalid task",
                     content = @Content(schema = @Schema(implementation = ApiError.class))),
-            @ApiResponse(responseCode = "404", description = "Unknown conversation_id",
-                    content = @Content(schema = @Schema(implementation = ApiError.class))),
             @ApiResponse(responseCode = "422", description = "Agent could not complete the task",
                     content = @Content(schema = @Schema(implementation = ApiError.class)))
     })
     @PostMapping("/task")
-    public TaskRecordDto createTask(
-            // Spring's @RequestBody binds the body; swagger's (fully-qualified, different type) documents
-            // examples. The default "New task" example omits conversation_id so it doesn't look required.
-            @Valid @RequestBody
-            @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    content = @Content(examples = {
-                            @ExampleObject(name = "New task",
-                                    value = "{ \"task\": \"What is 15% of 240?\" }"),
-                            @ExampleObject(name = "Follow-up",
-                                    value = "{ \"task\": \"Convert that to Fahrenheit\", "
-                                            + "\"conversation_id\": \"<id from a prior response>\" }")
-                    }))
-            TaskRequest request) {
-        return service.solve(request.task(), request.conversationId());
+    public TaskRecordDto createTask(@Valid @RequestBody TaskRequest request) {
+        return service.solve(request.task());   // new conversation
     }
 
     @Operation(summary = "Fetch a stored task by id")

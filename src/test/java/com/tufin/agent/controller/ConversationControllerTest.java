@@ -1,19 +1,24 @@
 package com.tufin.agent.controller;
 
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.tufin.agent.dto.ConversationTurnDto;
 import com.tufin.agent.dto.PagedConversationResponse;
+import com.tufin.agent.dto.TaskRecordDto;
 import com.tufin.agent.exception.ConversationNotFoundException;
+import com.tufin.agent.model.TaskRollup;
 import com.tufin.agent.service.AgentService;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -28,6 +33,8 @@ class ConversationControllerTest {
 
     @MockitoBean
     AgentService service;
+
+    // --- GET /conversations/{id} -------------------------------------------------------------
 
     @Test
     void returnsPagedTurnsWithDefaultSizeFromConfig() throws Exception {
@@ -62,5 +69,34 @@ class ConversationControllerTest {
         mockMvc.perform(get("/conversations/c1").param("size", "31"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400));
+    }
+
+    // --- POST /conversations/{id}/task (follow-up) -------------------------------------------
+
+    @Test
+    void addTaskContinuesTheConversation() throws Exception {
+        TaskRecordDto followUp = new TaskRecordDto("id-2", "and 20% of that?", "48", List.of(),
+                new TaskRollup(1, 1, 1, 1, 0, 0), "c1", 1);
+        when(service.solve("and 20% of that?", "c1")).thenReturn(followUp);
+
+        mockMvc.perform(post("/conversations/c1/task")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"task\":\"and 20% of that?\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.conversation_id").value("c1"))
+                .andExpect(jsonPath("$.conversation_order").value(1));
+
+        verify(service).solve("and 20% of that?", "c1");   // id comes from the path
+    }
+
+    @Test
+    void addTaskUnknownConversationIs404() throws Exception {
+        when(service.solve("hi", "nope")).thenThrow(new ConversationNotFoundException("nope"));
+
+        mockMvc.perform(post("/conversations/nope/task")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"task\":\"hi\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404));
     }
 }

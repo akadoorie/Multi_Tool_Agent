@@ -231,13 +231,16 @@ Follow-up tasks can be threaded into a **conversation** so the agent resolves re
 turns ("convert *that* to Fahrenheit"). Every task belongs to a conversation — a standalone task is a
 conversation of one.
 
-**Contract on `POST /task`** (optional `conversation_id` in the body):
+**Two symmetric operations** — a task's conversation is chosen by *which endpoint* you call, not a
+body field (the body is always just `{ "task": "..." }`):
 
-| `conversation_id` | Behaviour |
-|-------------------|-----------|
-| omitted / blank   | starts a **new** conversation; the response returns a minted `conversation_id`, `conversation_order = 0`. |
-| existing id       | **continues** it; `conversation_order` = the next position (2nd turn is `1`, …). |
-| unknown id        | **404** (`ConversationNotFoundException`). |
+| Operation | Behaviour |
+|-----------|-----------|
+| `POST /task` | starts a **new** conversation; the response returns a minted `conversation_id`, `conversation_order = 0`. |
+| `POST /conversations/{conversation_id}/task` | a **follow-up** — continues that conversation; `conversation_order` = the next position (2nd turn is `1`, …). Unknown id → **404** (`ConversationNotFoundException`). |
+| `GET /conversations/{conversation_id}` | the conversation's turns, oldest-first (paginated like `GET /tasks`), as lightweight `ConversationTurnDto`s; a turn's full trace is still at `GET /tasks/{taskId}`. |
+
+`conversation_id` is **not** a request-body field — a follow-up identifies its conversation by the path.
 
 **Context strategy (bounded & DB-ready).** A follow-up loads only the **last K turns** of its
 conversation (`app.conversation.context-turns`, default 10) — never the whole thing — and each prior
@@ -245,20 +248,17 @@ turn contributes just its **task + final answer** (not the trace/tool steps). Th
 **after** the cached system+tools prefix (so prompt caching is unaffected), then the new task. The
 lookup is a targeted `TaskRepository.findByConversation(id, limit)`, never a full-store scan.
 
-`GET /conversations/{conversationId}` returns the turns oldest-first (paginated like `GET /tasks`) as
-lightweight `ConversationTurnDto`s; the full trace of any turn is still at `GET /tasks/{taskId}`.
-
 **Example** — turn 2 references turn 1:
 
 ```bash
-# turn 1 (new conversation)
+# turn 1 — new conversation
 curl -s -X POST localhost:8080/task -H 'Content-Type: application/json' \
   -d '{"task":"What is the current weather in Tel Aviv?"}'
 # -> { ..., "final_answer":"... 30.1°C ...", "conversation_id":"ea09…", "conversation_order":0 }
 
-# turn 2 (continue it)
-curl -s -X POST localhost:8080/task -H 'Content-Type: application/json' \
-  -d '{"task":"Convert that temperature to Fahrenheit","conversation_id":"ea09…"}'
+# turn 2 — follow-up in that conversation (id in the path, not the body)
+curl -s -X POST localhost:8080/conversations/ea09…/task -H 'Content-Type: application/json' \
+  -d '{"task":"Convert that temperature to Fahrenheit"}'
 # -> { ..., "final_answer":"30.1°C is equal to 86.18°F.", "conversation_order":1 }
 ```
 
