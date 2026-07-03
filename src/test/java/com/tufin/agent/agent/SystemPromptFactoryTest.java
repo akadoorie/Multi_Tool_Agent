@@ -50,4 +50,14 @@ class SystemPromptFactoryTest {
         assertThat(prompt).contains("length", "weight", "temperature", "currency");
         assertThat(prompt).containsIgnoringCase("out of scope");
     }
+
+    @Test
+    void requiresAPlainMinimalFinalAnswer() {
+        String prompt = factory.build();
+
+        // The final answer must be plain and unembellished: no Markdown, no emojis, no filler.
+        assertThat(prompt).contains("Plain text ONLY", "No emojis");
+        // ...but naming the tool/source stays mandatory, even on a trivial answer.
+        assertThat(prompt).containsIgnoringCase("naming the tool");
+    }
 }
