@@ -10,7 +10,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "app")
 public record AppProperties(Agent agent, Http http, Tools tools, Persistence persistence,
-        Pagination pagination) {
+        Pagination pagination, Conversation conversation) {
 
     /**
      * Agent / LLM settings.
@@ -65,5 +65,14 @@ public record AppProperties(Agent agent, Http http, Tools tools, Persistence per
      * @param maxSize     largest {@code size} a caller may request (larger is rejected with 400).
      */
     public record Pagination(int defaultSize, int maxSize) {
+    }
+
+    /**
+     * Multi-turn conversation settings.
+     *
+     * @param contextTurns how many of the most recent prior turns (task + answer) to resend as context
+     *                     on a follow-up. Bounds the prompt so a long conversation never loads whole.
+     */
+    public record Conversation(int contextTurns) {
     }
 }

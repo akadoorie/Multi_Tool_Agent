@@ -42,12 +42,14 @@ public class TaskController {
                     content = @Content(schema = @Schema(implementation = TaskRecordDto.class))),
             @ApiResponse(responseCode = "400", description = "Blank/invalid task",
                     content = @Content(schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "404", description = "Unknown conversation_id",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
             @ApiResponse(responseCode = "422", description = "Agent could not complete the task",
                     content = @Content(schema = @Schema(implementation = ApiError.class)))
     })
     @PostMapping("/task")
     public TaskRecordDto createTask(@Valid @RequestBody TaskRequest request) {
-        return service.solve(request.task());
+        return service.solve(request.task(), request.conversationId());
     }
 
     @Operation(summary = "Fetch a stored task by id")

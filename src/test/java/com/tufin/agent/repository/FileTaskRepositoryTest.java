@@ -34,14 +34,20 @@ class FileTaskRepositoryTest {
                 new AppProperties.Agent("claude-sonnet-4-6", 8, 8192, 0.0, true),
                 null, null,
                 new AppProperties.Persistence(file.toString()),
-                null);
+                null, null);
     }
 
+    /** A record in its own single-turn conversation (so its assigned order is 0). */
     private TaskRecord record(String id) {
+        return turn(id, "conv-" + id);
+    }
+
+    /** A record belonging to {@code conversationId} (its order is assigned by {@code save}). */
+    private TaskRecord turn(String id, String conversationId) {
         TraceStep step = TraceStep.finalAnswer(1, 1, List.of("calculator"), "done", 5,
                 new TraceStep.TokenUsage(1, 2, 3));
         return new TaskRecord(id, "task " + id, "answer " + id, List.of(step),
-                new TaskRollup(10, 1, 2, 1, 0, 0), Instant.parse("2026-07-01T10:15:30Z"));
+                new TaskRollup(10, 1, 2, 1, 0, 0), Instant.parse("2026-07-01T10:15:30Z"), conversationId, 0);
     }
 
     @Test
@@ -67,5 +73,46 @@ class FileTaskRepositoryTest {
 
         assertThat(reloaded.findById("a")).contains(record("a"));
         assertThat(reloaded.findAll()).hasSize(1);
+    }
+
+    @Test
+    void assignsConversationOrderSequentiallyPerConversation() {
+        FileTaskRepository repo = new FileTaskRepository(propsFor(tempDir.resolve("t.jsonl")), mapper());
+
+        assertThat(repo.save(turn("a", "c1")).conversationOrder()).isZero();
+        assertThat(repo.save(turn("b", "c1")).conversationOrder()).isEqualTo(1);
+        assertThat(repo.save(turn("c", "c2")).conversationOrder()).isZero();   // separate conversation
+
+        assertThat(repo.countByConversation("c1")).isEqualTo(2);
+        assertThat(repo.countByConversation("unknown")).isZero();
+    }
+
+    @Test
+    void findByConversationReturnsMostRecentLimitOldestFirst() {
+        FileTaskRepository repo = new FileTaskRepository(propsFor(tempDir.resolve("t.jsonl")), mapper());
+        repo.save(turn("a", "c1"));   // order 0
+        repo.save(turn("b", "c1"));   // order 1
+        repo.save(turn("c", "c1"));   // order 2
+
+        List<TaskRecord> lastTwo = repo.findByConversation("c1", 2);
+
+        assertThat(lastTwo).extracting(TaskRecord::taskId).containsExactly("b", "c");
+        assertThat(lastTwo).extracting(TaskRecord::conversationOrder).containsExactly(1, 2);
+    }
+
+    @Test
+    void conversationIndexRebuildsFromFileOnRestart() {
+        Path file = tempDir.resolve("t.jsonl");
+        FileTaskRepository repo = new FileTaskRepository(propsFor(file), mapper());
+        repo.save(turn("a", "c1"));
+        repo.save(turn("b", "c1"));
+
+        FileTaskRepository reloaded = new FileTaskRepository(propsFor(file), mapper());
+
+        assertThat(reloaded.countByConversation("c1")).isEqualTo(2);
+        assertThat(reloaded.findByConversation("c1", 10)).extracting(TaskRecord::taskId)
+                .containsExactly("a", "b");
+        assertThat(reloaded.findConversationPage("c1", 0, 1)).extracting(TaskRecord::taskId)
+                .containsExactly("a");
     }
 }

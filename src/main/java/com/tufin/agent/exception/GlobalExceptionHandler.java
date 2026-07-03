@@ -22,8 +22,8 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    @ExceptionHandler(TaskNotFoundException.class)
-    public ResponseEntity<ApiError> handleTaskNotFound(TaskNotFoundException e) {
+    @ExceptionHandler({TaskNotFoundException.class, ConversationNotFoundException.class})
+    public ResponseEntity<ApiError> handleNotFound(RuntimeException e) {
         return build(HttpStatus.NOT_FOUND, e.getMessage());
     }
 

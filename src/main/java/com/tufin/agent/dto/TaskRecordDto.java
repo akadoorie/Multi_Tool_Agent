@@ -13,11 +13,14 @@ import java.util.List;
  * needless duplication. The DTO boundary that matters &mdash; not leaking internal-only fields such
  * as the stored {@code createdAt} &mdash; is handled by this being a distinct response type.
  *
- * @param taskId      server-generated task id (use it to fetch the task later).
- * @param task        the original natural-language task.
- * @param finalAnswer the agent's synthesised final answer.
- * @param trace       ordered execution trace.
- * @param rollup      latency/token totals for the task.
+ * @param taskId            server-generated task id (use it to fetch the task later).
+ * @param task              the original natural-language task.
+ * @param finalAnswer       the agent's synthesised final answer.
+ * @param trace             ordered execution trace.
+ * @param rollup            latency/token totals for the task.
+ * @param conversationId    id of the conversation this task belongs to; pass it back on a follow-up
+ *                          {@code POST /task} to continue the conversation.
+ * @param conversationOrder 0-based position of this task within its conversation (0 = the first turn).
  */
 public record TaskRecordDto(
         @Schema(description = "Server-generated task id.", example = "5f2c1e9a-1c2b-4a7d-9e10-3c4f5a6b7c8d")
@@ -29,5 +32,9 @@ public record TaskRecordDto(
         @Schema(description = "Ordered trace of every reasoning step and tool call.")
         List<TraceStep> trace,
         @Schema(description = "Per-task latency and token totals.")
-        TaskRollup rollup) {
+        TaskRollup rollup,
+        @Schema(description = "Conversation id; pass it back on a follow-up POST /task to continue.")
+        String conversationId,
+        @Schema(description = "0-based position of this task within its conversation.", example = "0")
+        int conversationOrder) {
 }

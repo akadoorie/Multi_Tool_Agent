@@ -29,6 +29,7 @@ public final class TestFixtures {
                                 "https://en.wikipedia.org/api/rest_v1/page/summary/"),
                         new AppProperties.Tools.Currency("https://api.frankfurter.app")),
                 new AppProperties.Persistence("./data/tasks.jsonl"),
-                pagination);
+                pagination,
+                new AppProperties.Conversation(10));
     }
 }

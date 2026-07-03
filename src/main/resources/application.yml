@@ -38,6 +38,9 @@ app:
   pagination:
     default-size: 20
     max-size: 100
+  conversation:
+    # How many recent prior turns (task + answer only) to resend as context on a follow-up.
+    context-turns: 10
 
 logging:
   level:

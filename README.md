@@ -179,10 +179,11 @@ fields surface whether caching is engaging rather than leaving it a silent no-op
 
 | Type          | Role                                                                                  |
 |---------------|---------------------------------------------------------------------------------------|
-| `TaskRecord`  | Stored domain record (source of truth in `tasks.jsonl`).                               |
+| `TaskRecord`  | Stored domain record (source of truth in `tasks.jsonl`); includes `conversation_id` / `conversation_order`. |
 | `TraceStep`   | One ordered step: `model_call`, `tool` (name/input/output), `reasoning` (explanation preceding an `Unsupported` verdict), or `final_answer` (carries `tools_used` — the distinct tools the task invoked). |
 | `TaskRollup`  | Per-task totals: latency, input/output tokens, iterations, and prompt-cache read/creation tokens. |
-| `TaskRequest` / `TaskRecordDto` / `ApiError` | API DTOs, kept separate from the stored model.         |
+| `TaskRequest` / `TaskRecordDto` / `ApiError` | API DTOs. `TaskRequest` accepts an optional `conversation_id`; `TaskRecordDto` echoes `conversation_id` / `conversation_order`. |
+| `ConversationTurnDto` | Lightweight per-turn view for `GET /conversations/{id}`: task, answer, `tools_used`, `created_at` — not the full trace (fetch that via `GET /tasks/{taskId}`). |
 
 The API and stored JSON use `snake_case` (`task_id`, `final_answer`, …).
 
@@ -207,7 +208,9 @@ The API and stored JSON use `snake_case` (`task_id`, `final_answer`, …).
       "tokens": { "input_tokens": 780, "output_tokens": 55, "total_tokens": 835 } }
   ],
   "rollup": { "total_latency_ms": 2500, "total_input_tokens": 1400, "total_output_tokens": 95, "iterations": 2,
-              "total_cache_read_input_tokens": 0, "total_cache_creation_input_tokens": 0 }
+              "total_cache_read_input_tokens": 0, "total_cache_creation_input_tokens": 0 },
+  "conversation_id": "9f3b1c7e-…",
+  "conversation_order": 0
 }
 ```
 
@@ -221,6 +224,49 @@ Every entry in `trace` carries two ordering fields:
   call, so several steps can share one `iteration`: above, the `model_call` and both `tool` steps are
   all `iteration: 1`, while the `final_answer` (a second model turn) is `iteration: 2`.
   `rollup.iterations` equals the number of model calls.
+
+### Multi-turn conversations
+
+Follow-up tasks can be threaded into a **conversation** so the agent resolves references to earlier
+turns ("convert *that* to Fahrenheit"). Every task belongs to a conversation — a standalone task is a
+conversation of one.
+
+**Contract on `POST /task`** (optional `conversation_id` in the body):
+
+| `conversation_id` | Behaviour |
+|-------------------|-----------|
+| omitted / blank   | starts a **new** conversation; the response returns a minted `conversation_id`, `conversation_order = 0`. |
+| existing id       | **continues** it; `conversation_order` = the next position (2nd turn is `1`, …). |
+| unknown id        | **404** (`ConversationNotFoundException`). |
+
+**Context strategy (bounded & DB-ready).** A follow-up loads only the **last K turns** of its
+conversation (`app.conversation.context-turns`, default 10) — never the whole thing — and each prior
+turn contributes just its **task + final answer** (not the trace/tool steps). Those are appended
+**after** the cached system+tools prefix (so prompt caching is unaffected), then the new task. The
+lookup is a targeted `TaskRepository.findByConversation(id, limit)`, never a full-store scan.
+
+`GET /conversations/{conversationId}` returns the turns oldest-first (paginated like `GET /tasks`) as
+lightweight `ConversationTurnDto`s; the full trace of any turn is still at `GET /tasks/{taskId}`.
+
+**Example** — turn 2 references turn 1:
+
+```bash
+# turn 1 (new conversation)
+curl -s -X POST localhost:8080/task -H 'Content-Type: application/json' \
+  -d '{"task":"What is the current weather in Tel Aviv?"}'
+# -> { ..., "final_answer":"... 30.1°C ...", "conversation_id":"ea09…", "conversation_order":0 }
+
+# turn 2 (continue it)
+curl -s -X POST localhost:8080/task -H 'Content-Type: application/json' \
+  -d '{"task":"Convert that temperature to Fahrenheit","conversation_id":"ea09…"}'
+# -> { ..., "final_answer":"30.1°C is equal to 86.18°F.", "conversation_order":1 }
+```
+
+The scope guard is unchanged: a follow-up that maps to a tool ("20% of that") runs it; a follow-up
+that needs no tool ("write a haiku about that") still hits the no-tool backstop → `Unsupported`.
+
+> **Note on old records:** tasks written before this feature have no `conversation_id`; they load fine
+> (the field is null) and simply aren't part of any conversation index.
 
 ---
 
@@ -345,6 +391,14 @@ type is registered with the JSON converter.
   queries, and writes are serialised on a single lock — fine at this scale, not for high concurrency.
   On Linux, a bind-mounted `./data` may need write permissions for the container user (Docker Desktop
   handles this transparently).
+- **Scaling ceiling — and the seam past it.** The in-memory primary index (task id → record) bounds
+  the store to datasets that fit in heap. Conversations, though, are already
+  designed to scale: reads go through **query-shaped** repository methods — `findByConversation(id,
+  limit)`, `countByConversation(id)`, `findConversationPage(id, page, size)` — each something a DB can
+  serve from an index on `conversation_id` / `conversation_order`, and the file store keeps only a
+  lightweight `conversation_id → task-ids` index (ids, not records). So a SQLite/Postgres
+  `TaskRepository` drops in where records and indexes live on disk and only the K needed turns are
+  materialised — **no change to `AgentService` or `AgentLoop`.**
 - **No auth or rate limiting.** Out of scope for the exercise; both would sit in front of the
   controller in production.
 - **LLM cost, latency, and variability.** Every task is one or more Claude calls. `temperature=0` and a

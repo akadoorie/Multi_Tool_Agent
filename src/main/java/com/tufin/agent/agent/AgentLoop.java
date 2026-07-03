@@ -65,17 +65,30 @@ public class AgentLoop {
         this.props = props;
     }
 
+    /** Single-shot convenience: run a task with no prior conversation context. */
+    public LoopResult run(String task) {
+        return run(task, List.of());
+    }
+
     /**
-     * Runs the loop for a task.
+     * Runs the loop for a task, seeded with prior conversation turns as context. The history is
+     * appended <em>after</em> the cached system+tools prefix &mdash; oldest&rarr;newest as alternating
+     * user/assistant messages &mdash; then the new user task, so the prompt-cache prefix stays
+     * byte-stable. Only the task + answer of each prior turn is resent (not its trace/tool steps).
      *
-     * @return the final answer, the trace, and the rollup.
+     * @return the final answer, the trace, and the rollup (this turn's work only; the resent history is
+     *         naturally counted in this turn's input tokens, which is correct).
      * @throws AgentExecutionException if the iteration cap is reached without a final answer.
      */
-    public LoopResult run(String task) {
+    public LoopResult run(String task, List<PriorTurn> history) {
         long taskStartNanos = System.nanoTime();
 
         List<Message> conversation = new ArrayList<>();
         conversation.add(new SystemMessage(promptFactory.build()));
+        for (PriorTurn turn : history) {
+            conversation.add(new UserMessage(turn.task()));
+            conversation.add(new AssistantMessage(turn.finalAnswer()));
+        }
         conversation.add(new UserMessage(task));
 
         ChatOptions options = optionsFactory.build();

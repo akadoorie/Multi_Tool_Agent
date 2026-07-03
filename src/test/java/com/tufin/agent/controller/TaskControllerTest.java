@@ -1,6 +1,8 @@
 package com.tufin.agent.controller;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -10,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.tufin.agent.dto.PagedTasksResponse;
 import com.tufin.agent.dto.TaskRecordDto;
+import com.tufin.agent.exception.ConversationNotFoundException;
 import com.tufin.agent.exception.TaskNotFoundException;
 import com.tufin.agent.model.TaskRollup;
 import com.tufin.agent.service.AgentService;
@@ -35,12 +38,13 @@ class TaskControllerTest {
     AgentService service;
 
     private TaskRecordDto sample(String id) {
-        return new TaskRecordDto(id, "what is 2+2", "42", List.of(), new TaskRollup(1, 1, 1, 1, 0, 0));
+        return new TaskRecordDto(id, "what is 2+2", "42", List.of(), new TaskRollup(1, 1, 1, 1, 0, 0),
+                "conv-1", 0);
     }
 
     @Test
     void postTaskReturnsTaskIdAndAnswer() throws Exception {
-        when(service.solve(anyString())).thenReturn(sample("id-1"));
+        when(service.solve(anyString(), any())).thenReturn(sample("id-1"));
 
         mockMvc.perform(post("/task")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -48,7 +52,30 @@ class TaskControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.task_id").value("id-1"))
                 .andExpect(jsonPath("$.task").value("what is 2+2"))
-                .andExpect(jsonPath("$.final_answer").value("42"));
+                .andExpect(jsonPath("$.final_answer").value("42"))
+                .andExpect(jsonPath("$.conversation_id").value("conv-1"))
+                .andExpect(jsonPath("$.conversation_order").value(0));
+    }
+
+    @Test
+    void postTaskPassesConversationIdThroughAndReturns404ForUnknown() throws Exception {
+        when(service.solve("follow up", "c1")).thenReturn(sample("id-2"));
+        when(service.solve(anyString(), eq("nope")))
+                .thenThrow(new ConversationNotFoundException("nope"));
+
+        // A follow-up carries the conversation_id through to the service.
+        mockMvc.perform(post("/task")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"task\":\"follow up\",\"conversation_id\":\"c1\"}"))
+                .andExpect(status().isOk());
+        verify(service).solve("follow up", "c1");
+
+        // An unknown conversation_id is a 404.
+        mockMvc.perform(post("/task")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"task\":\"hi\",\"conversation_id\":\"nope\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404));
     }
 
     @Test
