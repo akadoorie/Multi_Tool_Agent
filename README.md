@@ -159,6 +159,20 @@ Token usage comes from each response via Spring AI `ChatResponse.getMetadata().g
 calls in one turn aren't double-counted). Latency is measured with `System.nanoTime()` around each
 model and tool call; the rollup's total latency is the whole-task wall time.
 
+### Prompt caching
+
+The stable per-call prefix (the four tool definitions + system prompt) is marked cacheable
+(`AnthropicCacheStrategy.SYSTEM_AND_TOOLS` in `ChatOptionsFactory`), so repeat model calls bill that
+prefix at ~0.1× instead of re-sending it at full price. For the prefix to match byte-for-byte across
+requests, the system prompt is **date-granular** (not to-the-second) and the tools are advertised in a
+**stable, name-sorted** order. How well it works is itself observable: the rollup carries
+`total_cache_read_input_tokens` / `total_cache_creation_input_tokens` (read from Anthropic's native
+usage). In practice the ~1,325-token tools+system prefix **does cache**: the first model call *writes*
+it (`cache_creation`) and later calls within the 5-minute TTL *read* it (`cache_read`), cutting
+full-price input by ~1,300 tokens per call. (Anthropic silently skips caching a prefix under a
+model-specific minimum; should the prefix ever fall below it, these counts just return to 0 — so the
+fields surface whether caching is engaging rather than leaving it a silent no-op.)
+
 ---
 
 ## 4. Data model
@@ -167,7 +181,7 @@ model and tool call; the rollup's total latency is the whole-task wall time.
 |---------------|---------------------------------------------------------------------------------------|
 | `TaskRecord`  | Stored domain record (source of truth in `tasks.jsonl`).                               |
 | `TraceStep`   | One ordered step: `model_call`, `tool` (name/input/output), `reasoning` (explanation preceding an `Unsupported` verdict), or `final_answer`. |
-| `TaskRollup`  | Per-task totals: latency, input/output tokens, iterations.                            |
+| `TaskRollup`  | Per-task totals: latency, input/output tokens, iterations, and prompt-cache read/creation tokens. |
 | `TaskRequest` / `TaskRecordDto` / `ApiError` | API DTOs, kept separate from the stored model.         |
 
 The API and stored JSON use `snake_case` (`task_id`, `final_answer`, …).
@@ -191,7 +205,8 @@ The API and stored JSON use `snake_case` (`task_id`, `final_answer`, …).
     { "index": 4, "iteration": 2, "type": "final_answer", "thought": "15% of 240 is 36 …",
       "latency_ms": 700, "tokens": { "input_tokens": 780, "output_tokens": 55, "total_tokens": 835 } }
   ],
-  "rollup": { "total_latency_ms": 2500, "total_input_tokens": 1400, "total_output_tokens": 95, "iterations": 2 }
+  "rollup": { "total_latency_ms": 2500, "total_input_tokens": 1400, "total_output_tokens": 95, "iterations": 2,
+              "total_cache_read_input_tokens": 0, "total_cache_creation_input_tokens": 0 }
 }
 ```
 

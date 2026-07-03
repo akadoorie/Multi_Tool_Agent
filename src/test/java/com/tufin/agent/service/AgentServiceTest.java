@@ -28,7 +28,7 @@ class AgentServiceTest {
 
     private TaskRecord record(String id, String createdAt) {
         return new TaskRecord(id, "task " + id, "answer " + id, List.of(),
-                new TaskRollup(1, 1, 1, 1), Instant.parse(createdAt));
+                new TaskRollup(1, 1, 1, 1, 0, 0), Instant.parse(createdAt));
     }
 
     @Test

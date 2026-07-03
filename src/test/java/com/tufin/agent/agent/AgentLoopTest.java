@@ -18,9 +18,9 @@ import com.tufin.agent.tool.ToolRegistry;
 import com.tufin.agent.tool.ToolResult;
 import com.tufin.agent.util.JsonSupport;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.anthropic.api.AnthropicApi;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.DefaultUsage;
@@ -170,6 +170,24 @@ class AgentLoopTest {
         assertThat(result.rollup().iterations()).isEqualTo(2);
     }
 
+    @Test
+    void sumsCacheTokensOncePerModelCallFromNativeUsage() {
+        // Two model calls, each reporting native Anthropic cache tokens (creation on the first call,
+        // reads on the second — the typical warm-up pattern). The rollup sums them once per model
+        // call, mirroring the input/output rule (never per tool step).
+        when(chatModel.call(any(Prompt.class))).thenReturn(
+                toolTurnWithCache(10, 5, 1500, 0, call("calculator", "{\"expression\":\"1+1\"}")),
+                textTurnWithCache("done", 20, 7, 0, 1500));
+
+        LoopResult result = loop(8).run("add one and one");
+
+        assertThat(result.rollup().totalInputTokens()).isEqualTo(30);
+        assertThat(result.rollup().totalOutputTokens()).isEqualTo(12);
+        assertThat(result.rollup().totalCacheCreationInputTokens()).isEqualTo(1500);
+        assertThat(result.rollup().totalCacheReadInputTokens()).isEqualTo(1500);
+        assertThat(result.rollup().iterations()).isEqualTo(2);
+    }
+
     // --- ChatResponse builders ---------------------------------------------------------------
 
     private AssistantMessage.ToolCall call(String name, String argumentsJson) {
@@ -177,11 +195,32 @@ class AgentLoopTest {
     }
 
     private ChatResponse toolTurn(String text, int in, int out, AssistantMessage.ToolCall... calls) {
-        return response(new AssistantMessage(text, Map.of(), List.of(calls)), in, out);
+        return response(AssistantMessage.builder().content(text).toolCalls(List.of(calls)).build(), in, out);
     }
 
     private ChatResponse textTurn(String text, int in, int out) {
         return response(new AssistantMessage(text), in, out);
+    }
+
+    private ChatResponse toolTurnWithCache(int in, int out, int cacheCreation, int cacheRead,
+            AssistantMessage.ToolCall toolCall) {
+        return responseWithCache(
+                AssistantMessage.builder().content("calc").toolCalls(List.of(toolCall)).build(),
+                in, out, cacheCreation, cacheRead);
+    }
+
+    private ChatResponse textTurnWithCache(String text, int in, int out, int cacheCreation, int cacheRead) {
+        return responseWithCache(new AssistantMessage(text), in, out, cacheCreation, cacheRead);
+    }
+
+    /** A response whose provider-native usage is an Anthropic {@code Usage} carrying cache counts. */
+    private ChatResponse responseWithCache(AssistantMessage message, int in, int out,
+            int cacheCreation, int cacheRead) {
+        AnthropicApi.Usage nativeUsage = new AnthropicApi.Usage(in, out, cacheCreation, cacheRead);
+        ChatResponseMetadata metadata = ChatResponseMetadata.builder()
+                .usage(new DefaultUsage(in, out, in + out, nativeUsage))
+                .build();
+        return new ChatResponse(List.of(new Generation(message)), metadata);
     }
 
     /**
@@ -189,8 +228,8 @@ class AgentLoopTest {
      * {@link Generation} plus a separate Generation carrying the {@code tool_use} block.
      */
     private ChatResponse splitToolTurn(int in, int out, AssistantMessage.ToolCall call) {
-        AssistantMessage empty = new AssistantMessage("", Map.of(), List.of());
-        AssistantMessage withCall = new AssistantMessage("", Map.of(), List.of(call));
+        AssistantMessage empty = AssistantMessage.builder().content("").build();
+        AssistantMessage withCall = AssistantMessage.builder().content("").toolCalls(List.of(call)).build();
         ChatResponseMetadata metadata = ChatResponseMetadata.builder()
                 .usage(new DefaultUsage(in, out, in + out))
                 .build();

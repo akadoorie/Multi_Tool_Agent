@@ -22,7 +22,10 @@ public class SystemPromptFactory {
     }
 
     public String build() {
-        String now = ZonedDateTime.now(clock).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+        // Date granularity only (yyyy-MM-dd): a finer timestamp would change the cached tools+system
+        // prefix on every request and defeat Anthropic prompt caching. A date still anchors
+        // "today"/"now" for the weather tool, which is all this value is for.
+        String now = ZonedDateTime.now(clock).format(DateTimeFormatter.ISO_LOCAL_DATE);
         return """
                 You are a careful task-solving assistant. Your ONLY capabilities are the four tools
                 listed below — you cannot do anything else, and you must never answer from your own

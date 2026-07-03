@@ -10,10 +10,10 @@ import com.tufin.agent.tool.ToolResult;
 import com.tufin.agent.util.JsonSupport;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.anthropic.api.AnthropicApi;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -83,6 +83,8 @@ public class AgentLoop {
         int stepIndex = 0;
         int totalInputTokens = 0;
         int totalOutputTokens = 0;
+        long totalCacheReadInputTokens = 0;
+        long totalCacheCreationInputTokens = 0;
         int maxIterations = props.agent().maxIterations();
 
         for (int iteration = 1; iteration <= maxIterations; iteration++) {
@@ -91,10 +93,15 @@ public class AgentLoop {
             long modelLatencyMs = elapsedMs(modelStartNanos);
 
             TraceStep.TokenUsage usage = extractUsage(response);
+            CacheUsage cacheUsage = extractCacheUsage(response);
             // Sum tokens once per model call (never per tool step) so parallel tool calls in one turn
-            // are not double-counted.
+            // are not double-counted. Cache counts follow the same once-per-call rule.
             totalInputTokens += nullToZero(usage.inputTokens());
             totalOutputTokens += nullToZero(usage.outputTokens());
+            totalCacheReadInputTokens += cacheUsage.read();
+            totalCacheCreationInputTokens += cacheUsage.creation();
+            log.debug("Model call usage: input={} output={} cache_read={} cache_creation={}",
+                    usage.inputTokens(), usage.outputTokens(), cacheUsage.read(), cacheUsage.creation());
 
             // Spring AI's Anthropic mapping can split ONE assistant turn across several Generations
             // (e.g. an empty leading text block plus a separate tool_use block). Reading only
@@ -103,8 +110,10 @@ public class AgentLoop {
             // single assistant turn to add to the history.
             String assistantText = aggregateText(response.getResults());
             List<AssistantMessage.ToolCall> toolCalls = aggregateToolCalls(response.getResults());
-            AssistantMessage assistant =
-                    new AssistantMessage(assistantText == null ? "" : assistantText, Map.of(), toolCalls);
+            AssistantMessage assistant = AssistantMessage.builder()
+                    .content(assistantText == null ? "" : assistantText)
+                    .toolCalls(toolCalls)
+                    .build();
 
             // Resend the full history each turn: the Messages API is stateless.
             conversation.add(assistant);
@@ -136,7 +145,7 @@ public class AgentLoop {
                         anyToolUsed ? "" : " with no tool used -> Unsupported");
                 return new LoopResult(finalAnswer, List.copyOf(trace),
                         new TaskRollup(elapsedMs(taskStartNanos), totalInputTokens, totalOutputTokens,
-                                iteration));
+                                iteration, totalCacheReadInputTokens, totalCacheCreationInputTokens));
             }
 
             // One model_call step per iteration carries the reasoning text + tokens for this turn.
@@ -154,7 +163,7 @@ public class AgentLoop {
                 toolResponses.add(new ToolResponseMessage.ToolResponse(
                         call.id(), call.name(), json.write(result)));
             }
-            conversation.add(new ToolResponseMessage(toolResponses));
+            conversation.add(ToolResponseMessage.builder().responses(toolResponses).build());
         }
 
         // Loop exhausted: fail loudly rather than fabricate an answer.
@@ -204,5 +213,26 @@ public class AgentLoop {
     /** Accepts whatever numeric type the Spring AI {@code Usage} getters return (Integer or Long). */
     private static Integer asInt(Number value) {
         return value == null ? 0 : value.intValue();
+    }
+
+    /** Anthropic-native prompt-cache token counts for one model call (0 when absent / not cached). */
+    private record CacheUsage(long read, long creation) {
+    }
+
+    /**
+     * Reads Anthropic prompt-cache token counts from the response's provider-native usage. These are
+     * not on Spring AI's generic {@link Usage}; they live only on {@link AnthropicApi.Usage}, reachable
+     * via {@link Usage#getNativeUsage()}. Returns zeros when the native usage isn't Anthropic's (e.g. a
+     * mocked test response) or the counts are absent &mdash; e.g. when the prefix is under the model's
+     * cache minimum, Anthropic returns no cache tokens (silently uncached).
+     */
+    private static CacheUsage extractCacheUsage(ChatResponse response) {
+        Usage usage = response.getMetadata() == null ? null : response.getMetadata().getUsage();
+        Object nativeUsage = usage == null ? null : usage.getNativeUsage();
+        if (nativeUsage instanceof AnthropicApi.Usage anthropic) {
+            return new CacheUsage(nullToZero(anthropic.cacheReadInputTokens()),
+                    nullToZero(anthropic.cacheCreationInputTokens()));
+        }
+        return new CacheUsage(0, 0);
     }
 }

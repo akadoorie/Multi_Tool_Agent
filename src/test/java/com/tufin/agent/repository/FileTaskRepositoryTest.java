@@ -40,7 +40,7 @@ class FileTaskRepositoryTest {
     private TaskRecord record(String id) {
         TraceStep step = TraceStep.finalAnswer(1, 1, "done", 5, new TraceStep.TokenUsage(1, 2, 3));
         return new TaskRecord(id, "task " + id, "answer " + id, List.of(step),
-                new TaskRollup(10, 1, 2, 1), Instant.parse("2026-07-01T10:15:30Z"));
+                new TaskRollup(10, 1, 2, 1, 0, 0), Instant.parse("2026-07-01T10:15:30Z"));
     }
 
     @Test

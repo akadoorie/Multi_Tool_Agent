@@ -35,7 +35,7 @@ class TaskControllerTest {
     AgentService service;
 
     private TaskRecordDto sample(String id) {
-        return new TaskRecordDto(id, "what is 2+2", "42", List.of(), new TaskRollup(1, 1, 1, 1));
+        return new TaskRecordDto(id, "what is 2+2", "42", List.of(), new TaskRollup(1, 1, 1, 1, 0, 0));
     }
 
     @Test
