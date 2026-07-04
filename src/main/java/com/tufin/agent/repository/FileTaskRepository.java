@@ -41,6 +41,13 @@ public class FileTaskRepository implements TaskRepository {
 
     private static final Logger log = LoggerFactory.getLogger(FileTaskRepository.class);
 
+    /**
+     * A conversation is only <em>listed</em> by {@code GET /conversations} once it has at least this many
+     * turns. A standalone task is a "conversation of one" &mdash; it stays addressable by id and shows in
+     * {@code GET /tasks}, but isn't listed until a follow-up makes it a real conversation.
+     */
+    private static final int MIN_CONVERSATION_TURNS = 2;
+
     private final Path file;
     private final ObjectMapper mapper;
     private final Map<String, TaskRecord> index = new ConcurrentHashMap<>();
@@ -155,15 +162,7 @@ public class FileTaskRepository implements TaskRepository {
 
     @Override
     public List<ConversationSummary> findConversationsPage(int page, int size) {
-        // To rank by recency the file store must touch every conversation (O(#conversations)) — the same
-        // honest ceiling as findAll(). A DB would ORDER BY last_activity_at DESC LIMIT ? OFFSET ?.
-        List<ConversationSummary> ordered = conversationIndex.entrySet().stream()
-                .map(entry -> summarize(entry.getKey(), new ArrayList<>(entry.getValue())))
-                .filter(summary -> summary != null)
-                .sorted(Comparator.comparing(ConversationSummary::lastActivityAt).reversed()
-                        .thenComparing(ConversationSummary::conversationId))
-                .toList();
-
+        List<ConversationSummary> ordered = listableConversations();
         int total = ordered.size();
         // Long math so a huge page index can't overflow before we clamp to the list bounds.
         int from = (int) Math.min((long) page * size, total);
@@ -173,7 +172,26 @@ public class FileTaskRepository implements TaskRepository {
 
     @Override
     public int countConversations() {
-        return conversationIndex.size();
+        // Must reflect the same filtered set as findConversationsPage, or total_elements/total_pages drift.
+        return listableConversations().size();
+    }
+
+    /**
+     * The conversations eligible for {@code GET /conversations} &mdash; those with at least
+     * {@link #MIN_CONVERSATION_TURNS} turns &mdash; as summaries sorted newest-first by last activity
+     * (tie-broken by id). The page and the count both derive from this single helper so they can't drift.
+     *
+     * <p>To rank by recency the file store must touch every conversation (O(#conversations)) &mdash; the
+     * same honest ceiling as {@code findAll()}. A DB would {@code ORDER BY last_activity_at DESC LIMIT ?
+     * OFFSET ?} (plus {@code COUNT(*)}) over the {@code turn_count >= 2} set.
+     */
+    private List<ConversationSummary> listableConversations() {
+        return conversationIndex.entrySet().stream()
+                .map(entry -> summarize(entry.getKey(), new ArrayList<>(entry.getValue())))
+                .filter(summary -> summary != null && summary.turnCount() >= MIN_CONVERSATION_TURNS)
+                .sorted(Comparator.comparing(ConversationSummary::lastActivityAt).reversed()
+                        .thenComparing(ConversationSummary::conversationId))
+                .toList();
     }
 
     /** Builds a summary from a conversation's ordered id-list: first id → opening task, last id → recency. */

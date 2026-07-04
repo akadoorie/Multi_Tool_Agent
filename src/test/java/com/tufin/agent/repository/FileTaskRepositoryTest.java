@@ -126,24 +126,40 @@ class FileTaskRepositoryTest {
     }
 
     @Test
-    void findConversationsPageRanksByLastActivityNewestFirstAndSlices() {
+    void findConversationsPageListsOnlyMultiTurnConversationsNewestFirst() {
         FileTaskRepository repo = new FileTaskRepository(propsFor(tempDir.resolve("t.jsonl")), mapper());
-        repo.save(turnAt("a0", "A", "opening task in conversation A", "2026-07-01T10:00:00Z"));
-        repo.save(turnAt("a1", "A", "follow-up in A", "2026-07-01T12:00:00Z"));    // A last active 12:00
-        repo.save(turnAt("b0", "B", "opening task in B", "2026-07-01T11:00:00Z"));  // B last active 11:00
-        repo.save(turnAt("c0", "C", "opening task in C", "2026-07-01T09:00:00Z"));  // C last active 09:00
+        // A: 2 turns, last active 12:00 (qualifies).
+        repo.save(turnAt("a0", "A", "opening task in A", "2026-07-01T10:00:00Z"));
+        repo.save(turnAt("a1", "A", "follow-up in A", "2026-07-01T12:00:00Z"));
+        // B: single task, last active 11:00 (filtered out — a conversation of one).
+        repo.save(turnAt("b0", "B", "standalone task B", "2026-07-01T11:00:00Z"));
+        // C: 3 turns, last active 13:00 (qualifies, most recent conversation).
+        repo.save(turnAt("c0", "C", "opening task in C", "2026-07-01T08:00:00Z"));
+        repo.save(turnAt("c1", "C", "second turn in C", "2026-07-01T12:30:00Z"));
+        repo.save(turnAt("c2", "C", "third turn in C", "2026-07-01T13:00:00Z"));
+        // D: single task, last active 14:00 — most recent overall, but still filtered out.
+        repo.save(turnAt("d0", "D", "standalone task D", "2026-07-01T14:00:00Z"));
 
-        assertThat(repo.countConversations()).isEqualTo(3);
+        // count reflects the filtered set (only A and C), not all four conversations.
+        assertThat(repo.countConversations()).isEqualTo(2);
 
-        List<ConversationSummary> page0 = repo.findConversationsPage(0, 2);
-        assertThat(page0).extracting(ConversationSummary::conversationId).containsExactly("A", "B");
-        ConversationSummary a = page0.get(0);
-        assertThat(a.turnCount()).isEqualTo(2);
-        assertThat(a.firstTask()).isEqualTo("opening task in conversation A");   // opening task, untruncated
-        assertThat(a.lastActivityAt()).isEqualTo(Instant.parse("2026-07-01T12:00:00Z"));
+        assertThat(repo.findConversationsPage(0, 1)).extracting(ConversationSummary::conversationId)
+                .containsExactly("C");            // newest multi-turn first
+        assertThat(repo.findConversationsPage(0, 1).get(0).turnCount()).isEqualTo(3);
+        assertThat(repo.findConversationsPage(1, 1)).extracting(ConversationSummary::conversationId)
+                .containsExactly("A");
+        // A full page shows both qualifying conversations, newest-first; the single-task ones are excluded.
+        assertThat(repo.findConversationsPage(0, 10)).extracting(ConversationSummary::conversationId)
+                .containsExactly("C", "A");
+    }
 
-        // Second page returns the remaining (oldest) conversation.
-        assertThat(repo.findConversationsPage(1, 2)).extracting(ConversationSummary::conversationId)
-                .containsExactly("C");
+    @Test
+    void findConversationsPageIsEmptyWhenEveryConversationIsSingleTask() {
+        FileTaskRepository repo = new FileTaskRepository(propsFor(tempDir.resolve("t.jsonl")), mapper());
+        repo.save(turnAt("x0", "X", "standalone X", "2026-07-01T10:00:00Z"));
+        repo.save(turnAt("y0", "Y", "standalone Y", "2026-07-01T11:00:00Z"));
+
+        assertThat(repo.countConversations()).isZero();
+        assertThat(repo.findConversationsPage(0, 10)).isEmpty();
     }
 }

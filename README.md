@@ -238,15 +238,17 @@ body field (the body is always just `{ "task": "..." }`):
 |-----------|-----------|
 | `POST /task` | starts a **new** conversation; the response returns a minted `conversation_id`, `conversation_order = 0`. |
 | `POST /conversations/{conversation_id}/task` | a **follow-up** — continues that conversation; `conversation_order` = the next position (2nd turn is `1`, …). Unknown id → **404** (`ConversationNotFoundException`). |
-| `GET /conversations` | conversations newest-first by last activity, as lightweight `ConversationSummaryDto` cards, **paginated** (`page`/`size`, reusing `app.pagination.*` like `GET /tasks`; out of range → 400) so a client can page through *all* of them. |
+| `GET /conversations` | conversations **with at least 2 turns**, newest-first by last activity, as lightweight `ConversationSummaryDto` cards, **paginated** (`page`/`size`, reusing `app.pagination.*` like `GET /tasks`; out of range → 400). A standalone task is a conversation of one — it shows in `GET /tasks` and stays addressable at `GET /conversations/{id}`, but is listed here only once it has a follow-up. |
 | `GET /conversations/{conversation_id}` | the conversation's turns, oldest-first (paginated like `GET /tasks`), as lightweight `ConversationTurnDto`s; a turn's full trace is still at `GET /tasks/{taskId}`. |
 
 `conversation_id` is **not** a request-body field — a follow-up identifies its conversation by the path.
 
 **Discovering conversations.** `GET /conversations` is the way to find a conversation without already
-holding its id. Each card carries `conversation_id`, `turn_count`, `last_activity_at`, and `first_task`
-— and `first_task` is deliberately just the conversation's **opening task, truncated (a subject line),
-not a generated summary**. Nothing on this endpoint calls the LLM.
+holding its id. It lists only **real conversations — those with ≥ 2 turns** — so single-task
+"conversations of one" don't clutter it (they remain in `GET /tasks` and addressable by id). Each card
+carries `conversation_id`, `turn_count`, `last_activity_at`, and `first_task` — and `first_task` is
+deliberately just the conversation's **opening task, truncated (a subject line), not a generated
+summary**. Nothing on this endpoint calls the LLM.
 
 **Context strategy (bounded & DB-ready).** A follow-up loads only the **last K turns** of its
 conversation (`app.conversation.context-turns`, default 10) — never the whole thing — and each prior
