@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.tufin.agent.dto.ConversationSummaryDto;
 import com.tufin.agent.dto.ConversationTurnDto;
 import com.tufin.agent.dto.PagedConversationResponse;
+import com.tufin.agent.dto.PagedConversationSummaries;
 import com.tufin.agent.dto.TaskRecordDto;
 import com.tufin.agent.exception.ConversationNotFoundException;
 import com.tufin.agent.model.TaskRollup;
@@ -101,30 +102,39 @@ class ConversationControllerTest {
                 .andExpect(jsonPath("$.status").value(404));
     }
 
-    // --- GET /conversations (recent list) ----------------------------------------------------
+    // --- GET /conversations (paginated list) -------------------------------------------------
 
     @Test
-    void listConversationsUsesConfiguredDefaultLimitWhenOmitted() throws Exception {
+    void listConversationsUsesConfiguredDefaultSizeAndReturnsEnvelope() throws Exception {
         ConversationSummaryDto card = new ConversationSummaryDto("c1", "opening task", 2,
                 Instant.parse("2026-07-01T12:00:00Z"));
-        when(service.listRecentConversations(20)).thenReturn(List.of(card));
+        when(service.listConversations(0, 7))
+                .thenReturn(new PagedConversationSummaries(List.of(card), 0, 7, 1, 1));
 
         mockMvc.perform(get("/conversations"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].conversation_id").value("c1"))
-                .andExpect(jsonPath("$[0].first_task").value("opening task"))
-                .andExpect(jsonPath("$[0].turn_count").value(2));
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(7))
+                .andExpect(jsonPath("$.total_elements").value(1))
+                .andExpect(jsonPath("$.total_pages").value(1))
+                .andExpect(jsonPath("$.items[0].conversation_id").value("c1"))
+                .andExpect(jsonPath("$.items[0].first_task").value("opening task"))
+                .andExpect(jsonPath("$.items[0].turn_count").value(2));
 
-        verify(service).listRecentConversations(20);   // list-default from config (application.yml)
+        verify(service).listConversations(0, 7);   // default-size from config (7)
     }
 
     @Test
-    void listConversationsRejectsOutOfRangeLimitWith400() throws Exception {
-        mockMvc.perform(get("/conversations").param("limit", "0"))
+    void listConversationsRejectsInvalidPagingWith400() throws Exception {
+        mockMvc.perform(get("/conversations").param("size", "0"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400));
 
-        mockMvc.perform(get("/conversations").param("limit", "101"))   // > list-max (100)
+        mockMvc.perform(get("/conversations").param("size", "31"))   // > max-size (30)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+
+        mockMvc.perform(get("/conversations").param("page", "-1"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400));
     }

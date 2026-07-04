@@ -126,22 +126,24 @@ class FileTaskRepositoryTest {
     }
 
     @Test
-    void findRecentConversationsRanksByLastActivityNewestFirstAndHonoursLimit() {
+    void findConversationsPageRanksByLastActivityNewestFirstAndSlices() {
         FileTaskRepository repo = new FileTaskRepository(propsFor(tempDir.resolve("t.jsonl")), mapper());
         repo.save(turnAt("a0", "A", "opening task in conversation A", "2026-07-01T10:00:00Z"));
         repo.save(turnAt("a1", "A", "follow-up in A", "2026-07-01T12:00:00Z"));    // A last active 12:00
         repo.save(turnAt("b0", "B", "opening task in B", "2026-07-01T11:00:00Z"));  // B last active 11:00
         repo.save(turnAt("c0", "C", "opening task in C", "2026-07-01T09:00:00Z"));  // C last active 09:00
 
-        List<ConversationSummary> recent = repo.findRecentConversations(10);
-        assertThat(recent).extracting(ConversationSummary::conversationId).containsExactly("A", "B", "C");
+        assertThat(repo.countConversations()).isEqualTo(3);
 
-        ConversationSummary a = recent.get(0);
+        List<ConversationSummary> page0 = repo.findConversationsPage(0, 2);
+        assertThat(page0).extracting(ConversationSummary::conversationId).containsExactly("A", "B");
+        ConversationSummary a = page0.get(0);
         assertThat(a.turnCount()).isEqualTo(2);
         assertThat(a.firstTask()).isEqualTo("opening task in conversation A");   // opening task, untruncated
         assertThat(a.lastActivityAt()).isEqualTo(Instant.parse("2026-07-01T12:00:00Z"));
 
-        assertThat(repo.findRecentConversations(2)).extracting(ConversationSummary::conversationId)
-                .containsExactly("A", "B");
+        // Second page returns the remaining (oldest) conversation.
+        assertThat(repo.findConversationsPage(1, 2)).extracting(ConversationSummary::conversationId)
+                .containsExactly("C");
     }
 }

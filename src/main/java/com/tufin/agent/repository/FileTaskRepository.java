@@ -154,16 +154,26 @@ public class FileTaskRepository implements TaskRepository {
     }
 
     @Override
-    public List<ConversationSummary> findRecentConversations(int limit) {
+    public List<ConversationSummary> findConversationsPage(int page, int size) {
         // To rank by recency the file store must touch every conversation (O(#conversations)) — the same
-        // honest ceiling as findAll(). A DB would ORDER BY last_activity_at DESC LIMIT ? from an index.
-        return conversationIndex.entrySet().stream()
+        // honest ceiling as findAll(). A DB would ORDER BY last_activity_at DESC LIMIT ? OFFSET ?.
+        List<ConversationSummary> ordered = conversationIndex.entrySet().stream()
                 .map(entry -> summarize(entry.getKey(), new ArrayList<>(entry.getValue())))
                 .filter(summary -> summary != null)
                 .sorted(Comparator.comparing(ConversationSummary::lastActivityAt).reversed()
                         .thenComparing(ConversationSummary::conversationId))
-                .limit(limit)
                 .toList();
+
+        int total = ordered.size();
+        // Long math so a huge page index can't overflow before we clamp to the list bounds.
+        int from = (int) Math.min((long) page * size, total);
+        int to = (int) Math.min((long) from + size, total);
+        return ordered.subList(from, to);
+    }
+
+    @Override
+    public int countConversations() {
+        return conversationIndex.size();
     }
 
     /** Builds a summary from a conversation's ordered id-list: first id → opening task, last id → recency. */

@@ -30,6 +30,6 @@ public final class TestFixtures {
                         new AppProperties.Tools.Currency("https://api.frankfurter.app")),
                 new AppProperties.Persistence("./data/tasks.jsonl"),
                 pagination,
-                new AppProperties.Conversation(10, 20, 100));
+                new AppProperties.Conversation(10));
     }
 }

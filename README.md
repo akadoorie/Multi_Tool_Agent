@@ -238,7 +238,7 @@ body field (the body is always just `{ "task": "..." }`):
 |-----------|-----------|
 | `POST /task` | starts a **new** conversation; the response returns a minted `conversation_id`, `conversation_order = 0`. |
 | `POST /conversations/{conversation_id}/task` | a **follow-up** — continues that conversation; `conversation_order` = the next position (2nd turn is `1`, …). Unknown id → **404** (`ConversationNotFoundException`). |
-| `GET /conversations` | the most-recently-active conversations, newest first, as lightweight `ConversationSummaryDto` cards (`limit` optional: default `app.conversation.list-default`, capped at `app.conversation.list-max`; out of range → 400). |
+| `GET /conversations` | conversations newest-first by last activity, as lightweight `ConversationSummaryDto` cards, **paginated** (`page`/`size`, reusing `app.pagination.*` like `GET /tasks`; out of range → 400) so a client can page through *all* of them. |
 | `GET /conversations/{conversation_id}` | the conversation's turns, oldest-first (paginated like `GET /tasks`), as lightweight `ConversationTurnDto`s; a turn's full trace is still at `GET /tasks/{taskId}`. |
 
 `conversation_id` is **not** a request-body field — a follow-up identifies its conversation by the path.

@@ -15,6 +15,7 @@ import com.tufin.agent.agent.PriorTurn;
 import com.tufin.agent.dto.ConversationSummaryDto;
 import com.tufin.agent.dto.ConversationTurnDto;
 import com.tufin.agent.dto.PagedConversationResponse;
+import com.tufin.agent.dto.PagedConversationSummaries;
 import com.tufin.agent.dto.PagedTasksResponse;
 import com.tufin.agent.dto.TaskRecordDto;
 import com.tufin.agent.exception.ConversationNotFoundException;
@@ -175,18 +176,23 @@ class AgentServiceTest {
     }
 
     @Test
-    void listRecentConversationsMapsAndTruncatesFirstTask() {
+    void listConversationsMapsTruncatesAndBuildsThePagedEnvelope() {
         String longTask = "a".repeat(150);
-        when(repository.findRecentConversations(20)).thenReturn(List.of(
+        when(repository.countConversations()).thenReturn(3);
+        when(repository.findConversationsPage(0, 2)).thenReturn(List.of(
                 new ConversationSummary("c1", longTask, 3, Instant.parse("2026-07-01T12:00:00Z")),
                 new ConversationSummary("c2", "short opener", 1, Instant.parse("2026-07-01T11:00:00Z"))));
 
-        List<ConversationSummaryDto> cards = service.listRecentConversations(20);
+        PagedConversationSummaries page = service.listConversations(0, 2);
 
-        assertThat(cards).extracting(ConversationSummaryDto::conversationId).containsExactly("c1", "c2");
-        ConversationSummaryDto first = cards.get(0);
+        assertThat(page.page()).isEqualTo(0);
+        assertThat(page.size()).isEqualTo(2);
+        assertThat(page.totalElements()).isEqualTo(3);
+        assertThat(page.totalPages()).isEqualTo(2);   // ceil(3 / 2)
+        assertThat(page.items()).extracting(ConversationSummaryDto::conversationId).containsExactly("c1", "c2");
+        ConversationSummaryDto first = page.items().get(0);
         assertThat(first.turnCount()).isEqualTo(3);
         assertThat(first.firstTask()).hasSize(101).endsWith("…");   // truncated to 100 chars + ellipsis
-        assertThat(cards.get(1).firstTask()).isEqualTo("short opener");   // short text is left as-is
+        assertThat(page.items().get(1).firstTask()).isEqualTo("short opener");   // short text is left as-is
     }
 }

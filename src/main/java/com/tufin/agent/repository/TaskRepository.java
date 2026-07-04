@@ -42,9 +42,12 @@ public interface TaskRepository {
     List<TaskRecord> findConversationPage(String conversationId, int page, int size);
 
     /**
-     * The {@code limit} most-recently-active conversations, newest first (tie-broken by id), each a
-     * lightweight {@link ConversationSummary}. A DB would serve this from an index / a denormalized
-     * {@code conversations} table with {@code ORDER BY last_activity_at DESC LIMIT ?}.
+     * One page of conversation summaries, newest first by last activity (tie-broken by id), each a
+     * lightweight {@link ConversationSummary}. A DB would serve this with
+     * {@code ORDER BY last_activity_at DESC LIMIT ? OFFSET ?}.
      */
-    List<ConversationSummary> findRecentConversations(int limit);
+    List<ConversationSummary> findConversationsPage(int page, int size);
+
+    /** Total number of conversations (for {@code total_elements} / {@code total_pages}). */
+    int countConversations();
 }

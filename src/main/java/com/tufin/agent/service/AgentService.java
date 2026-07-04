@@ -8,6 +8,7 @@ import com.tufin.agent.dto.ConversationSummaryDto;
 import com.tufin.agent.dto.ConversationTurnDto;
 import com.tufin.agent.dto.DtoMapper;
 import com.tufin.agent.dto.PagedConversationResponse;
+import com.tufin.agent.dto.PagedConversationSummaries;
 import com.tufin.agent.dto.PagedTasksResponse;
 import com.tufin.agent.dto.TaskRecordDto;
 import com.tufin.agent.exception.ConversationNotFoundException;
@@ -161,14 +162,18 @@ public class AgentService {
     }
 
     /**
-     * Lists the {@code limit} most-recently-active conversations, newest first, as lightweight cards
+     * Returns one page of conversation summaries, newest first by last activity, as lightweight cards
      * ({@code first_task} is the opening task, not a generated summary). No LLM involved.
      *
-     * @param limit max conversations to return (validated at the controller).
+     * @param page 0-based page index (validated at the controller).
+     * @param size page size (validated at the controller).
      */
-    public List<ConversationSummaryDto> listRecentConversations(int limit) {
-        return repository.findRecentConversations(limit).stream()
+    public PagedConversationSummaries listConversations(int page, int size) {
+        long total = repository.countConversations();
+        int totalPages = (int) Math.ceil((double) total / size);
+        List<ConversationSummaryDto> items = repository.findConversationsPage(page, size).stream()
                 .map(DtoMapper::toConversationSummary)
                 .toList();
+        return new PagedConversationSummaries(items, page, size, total, totalPages);
     }
 }

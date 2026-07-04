@@ -72,10 +72,7 @@ public record AppProperties(Agent agent, Http http, Tools tools, Persistence per
      *
      * @param contextTurns how many of the most recent prior turns (task + answer) to resend as context
      *                     on a follow-up. Bounds the prompt so a long conversation never loads whole.
-     * @param listDefault  default number of conversations {@code GET /conversations} returns when
-     *                     {@code limit} is omitted.
-     * @param listMax      largest {@code limit} {@code GET /conversations} allows (larger → 400).
      */
-    public record Conversation(int contextTurns, int listDefault, int listMax) {
+    public record Conversation(int contextTurns) {
     }
 }
