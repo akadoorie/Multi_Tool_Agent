@@ -148,6 +148,7 @@ public class AgentLoop {
                 if (anyToolUsed) {
                     finalAnswer = assistantText;
                     trace.add(TraceStep.finalAnswer(++stepIndex, iteration, toolsUsed, finalAnswer, modelLatencyMs, usage));
+                    log.info("Task completed in {} iteration(s) using tools {}.", iteration, toolsUsed);
                 } else if (assistantText != null && !assistantText.isBlank()) {
                     // Out of scope, but the model explained why. Keep that explanation as a `reasoning`
                     // step (with this turn's latency + tokens) so the verdict is legible, then append a
@@ -156,13 +157,18 @@ public class AgentLoop {
                     finalAnswer = UNSUPPORTED;
                     trace.add(TraceStep.reasoning(++stepIndex, iteration, assistantText, modelLatencyMs, usage));
                     trace.add(TraceStep.finalAnswer(++stepIndex, iteration, null, UNSUPPORTED, 0, null));
+                    // Surface WHY the task was rejected at WARN, so operators can diagnose scope
+                    // decisions from the logs alone. The same reason is in the trace's reasoning step
+                    // for API consumers. Newlines are collapsed so one rejection stays one log line.
+                    log.warn("Task out of scope — no tool applied. task=\"{}\" reason=\"{}\"",
+                            oneLine(task), oneLine(assistantText));
                 } else {
                     // Out of scope with no explanation: a single "Unsupported" verdict.
                     finalAnswer = UNSUPPORTED;
                     trace.add(TraceStep.finalAnswer(++stepIndex, iteration, null, UNSUPPORTED, modelLatencyMs, usage));
+                    log.warn("Task out of scope — no tool applied and the model gave no reason. task=\"{}\"",
+                            oneLine(task));
                 }
-                log.info("Task completed in {} iteration(s){}", iteration,
-                        anyToolUsed ? "" : " with no tool used -> Unsupported");
                 return new LoopResult(finalAnswer, List.copyOf(trace),
                         new TaskRollup(elapsedMs(taskStartNanos), totalInputTokens, totalOutputTokens,
                                 iteration, totalCacheReadInputTokens, totalCacheCreationInputTokens));
@@ -212,6 +218,14 @@ public class AgentLoop {
 
     private static long elapsedMs(long startNanos) {
         return (System.nanoTime() - startNanos) / 1_000_000L;
+    }
+
+    /**
+     * Flattens a value for single-line logging: newlines/carriage returns become spaces so a
+     * multi-line task cannot forge extra log lines (log injection). Null becomes an empty string.
+     */
+    private static String oneLine(String value) {
+        return value == null ? "" : value.replaceAll("[\\r\\n]+", " ").strip();
     }
 
     private static int nullToZero(Integer value) {

@@ -8,6 +8,10 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tufin.agent.TestFixtures;
 import com.tufin.agent.exception.AgentExecutionException;
@@ -20,6 +24,7 @@ import com.tufin.agent.util.JsonSupport;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.anthropic.api.AnthropicApi;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
@@ -120,6 +125,25 @@ class AgentLoopTest {
     }
 
     @Test
+    void logsTheTaskAndScopeReasonAtWarnWhenNoToolIsUsed() {
+        // Observability: a rejection must be diagnosable from the logs alone, not only the payload.
+        ListAppender<ILoggingEvent> appender = attachAppenderTo(AgentLoop.class);
+        String explanation = "This is a coding task, which none of the four tools can perform.";
+        when(chatModel.call(any(Prompt.class))).thenReturn(textTurn(explanation, 5, 3));
+
+        loop(8).run("write a bubble sort in Java");
+
+        ILoggingEvent warn = appender.list.stream()
+                .filter(event -> event.getLevel() == Level.WARN)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("expected a WARN log for the out-of-scope task"));
+        assertThat(warn.getFormattedMessage())
+                .contains("out of scope")
+                .contains("write a bubble sort in Java")
+                .contains(explanation);
+    }
+
+    @Test
     void returnsSingleUnsupportedStepWhenNoToolAndNoText() {
         // No tool AND no explanatory text -> just the synthetic final_answer, no reasoning step.
         when(chatModel.call(any(Prompt.class))).thenReturn(textTurn("", 5, 1));
@@ -192,6 +216,15 @@ class AgentLoopTest {
         assertThat(result.rollup().totalCacheCreationInputTokens()).isEqualTo(1500);
         assertThat(result.rollup().totalCacheReadInputTokens()).isEqualTo(1500);
         assertThat(result.rollup().iterations()).isEqualTo(2);
+    }
+
+    /** Attaches a fresh in-memory Logback appender to a class's logger so a test can read its logs. */
+    private ListAppender<ILoggingEvent> attachAppenderTo(Class<?> loggingClass) {
+        Logger logger = (Logger) LoggerFactory.getLogger(loggingClass);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        return appender;
     }
 
     // --- ChatResponse builders ---------------------------------------------------------------

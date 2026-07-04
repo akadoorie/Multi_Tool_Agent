@@ -22,8 +22,11 @@ class SystemPromptFactoryTest {
         String prompt = factory.build();
 
         assertThat(prompt).contains("Unsupported");
-        // The rule must be an explicit, exact-word instruction, not a vague suggestion.
-        assertThat(prompt).contains("exactly the single word `Unsupported`");
+        // Out-of-scope tasks must yield a one-line reason (captured as the reasoning step), not a
+        // bare token — so the verdict is legible from the response without asking the model twice.
+        assertThat(prompt).contains("short sentence");
+        assertThat(prompt).contains("records your sentence as the reasoning");
+        assertThat(prompt).contains("the outcome as `Unsupported`");
     }
 
     @Test
@@ -41,6 +44,16 @@ class SystemPromptFactoryTest {
         // The timestamp is injected to anchor "now"/"today" for tools, not as a clock to expose;
         // a bare date/time question has no supporting tool and must be Unsupported.
         assertThat(prompt).contains("date, time, or clock");
+    }
+
+    @Test
+    void routesFactualQuestionsToWebSearchInsteadOfRefusing() {
+        String prompt = factory.build();
+
+        // A "formula for the area of a circle" style question is encyclopedic and must go to
+        // web_search, not be refused as Unsupported just because the model already knows the answer.
+        assertThat(prompt).contains("formula");
+        assertThat(prompt).contains("already KNOW the answer is NOT a reason");
     }
 
     @Test
