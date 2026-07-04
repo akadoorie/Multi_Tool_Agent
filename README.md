@@ -95,6 +95,16 @@ flowchart TD
    ```
 
 - **Logs** stream to the container console (`docker compose logs -f`); each line carries `[task:<id>]`.
+- **Change the log level** *before* `docker compose up --build`: add a line to `.env` (Compose injects
+  it into the container). The default is `INFO`; `DEBUG` additionally surfaces per-call token/cache
+  usage from the agent loop.
+  ```bash
+  # .env
+  LOGGING_LEVEL_COM_TUFIN_AGENT=DEBUG        # TRACE | DEBUG | INFO | WARN | ERROR
+  ```
+  The same variable works for any logger — e.g. `LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_WEB=DEBUG` for HTTP
+  request logging. (Running locally without Docker? Prefix the run instead:
+  `LOGGING_LEVEL_COM_TUFIN_AGENT=DEBUG ./mvnw spring-boot:run`.)
 - **Data** lives in `./data/tasks.jsonl` on the host (mounted volume), so it survives restarts.
 - **Stop:** `Ctrl-C`, then `docker compose down`.
 
@@ -318,6 +328,7 @@ All tunables live in `src/main/resources/application.yml`, bound to the typed `A
 | `app.persistence.data-file`  | `./data/tasks.jsonl`                                 | Task store path (mounted volume in Docker).    |
 | `app.pagination.default-size`| `20`                                                 | `GET /tasks` page size when `size` is omitted.  |
 | `app.pagination.max-size`    | `100`                                                | Largest `size` a caller may request (else 400). |
+| `logging.level.com.tufin.agent` | `INFO`                                            | App log verbosity. Override via env `LOGGING_LEVEL_COM_TUFIN_AGENT` (e.g. a line in `.env`); `DEBUG` shows per-call token/cache usage. |
 
 The API key is **never** in config; `application.yml` references `${ANTHROPIC_API_KEY}`, which Spring
 resolves from the environment and Docker Compose injects from `.env`.
