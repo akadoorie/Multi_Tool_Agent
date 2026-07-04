@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.tufin.agent.dto.ConversationSummaryDto;
 import com.tufin.agent.dto.ConversationTurnDto;
 import com.tufin.agent.dto.PagedConversationResponse;
 import com.tufin.agent.dto.TaskRecordDto;
@@ -98,5 +99,33 @@ class ConversationControllerTest {
                         .content("{\"task\":\"hi\"}"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404));
+    }
+
+    // --- GET /conversations (recent list) ----------------------------------------------------
+
+    @Test
+    void listConversationsUsesConfiguredDefaultLimitWhenOmitted() throws Exception {
+        ConversationSummaryDto card = new ConversationSummaryDto("c1", "opening task", 2,
+                Instant.parse("2026-07-01T12:00:00Z"));
+        when(service.listRecentConversations(20)).thenReturn(List.of(card));
+
+        mockMvc.perform(get("/conversations"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].conversation_id").value("c1"))
+                .andExpect(jsonPath("$[0].first_task").value("opening task"))
+                .andExpect(jsonPath("$[0].turn_count").value(2));
+
+        verify(service).listRecentConversations(20);   // list-default from config (application.yml)
+    }
+
+    @Test
+    void listConversationsRejectsOutOfRangeLimitWith400() throws Exception {
+        mockMvc.perform(get("/conversations").param("limit", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+
+        mockMvc.perform(get("/conversations").param("limit", "101"))   // > list-max (100)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
     }
 }

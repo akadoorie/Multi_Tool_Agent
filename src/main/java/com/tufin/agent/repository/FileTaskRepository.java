@@ -4,12 +4,14 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tufin.agent.config.AppProperties;
 import com.tufin.agent.exception.PersistenceException;
+import com.tufin.agent.model.ConversationSummary;
 import com.tufin.agent.model.TaskRecord;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -149,6 +151,32 @@ public class FileTaskRepository implements TaskRepository {
         int from = (int) Math.min((long) page * size, ids.size());
         int to = (int) Math.min((long) from + size, ids.size());
         return materialize(ids.subList(from, to));
+    }
+
+    @Override
+    public List<ConversationSummary> findRecentConversations(int limit) {
+        // To rank by recency the file store must touch every conversation (O(#conversations)) — the same
+        // honest ceiling as findAll(). A DB would ORDER BY last_activity_at DESC LIMIT ? from an index.
+        return conversationIndex.entrySet().stream()
+                .map(entry -> summarize(entry.getKey(), new ArrayList<>(entry.getValue())))
+                .filter(summary -> summary != null)
+                .sorted(Comparator.comparing(ConversationSummary::lastActivityAt).reversed()
+                        .thenComparing(ConversationSummary::conversationId))
+                .limit(limit)
+                .toList();
+    }
+
+    /** Builds a summary from a conversation's ordered id-list: first id → opening task, last id → recency. */
+    private ConversationSummary summarize(String conversationId, List<String> ids) {
+        if (ids.isEmpty()) {
+            return null;
+        }
+        TaskRecord first = index.get(ids.get(0));
+        TaskRecord last = index.get(ids.get(ids.size() - 1));
+        if (first == null || last == null) {
+            return null;
+        }
+        return new ConversationSummary(conversationId, first.task(), ids.size(), last.createdAt());
     }
 
     /** A stable snapshot of a conversation's ordered ids (ascending by conversation_order). */

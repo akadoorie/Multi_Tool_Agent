@@ -1,5 +1,6 @@
 package com.tufin.agent.repository;
 
+import com.tufin.agent.model.ConversationSummary;
 import com.tufin.agent.model.TaskRecord;
 import java.util.List;
 import java.util.Optional;
@@ -39,4 +40,11 @@ public interface TaskRepository {
 
     /** One page of a conversation's turns, ordered by {@code conversationOrder} ascending. */
     List<TaskRecord> findConversationPage(String conversationId, int page, int size);
+
+    /**
+     * The {@code limit} most-recently-active conversations, newest first (tie-broken by id), each a
+     * lightweight {@link ConversationSummary}. A DB would serve this from an index / a denormalized
+     * {@code conversations} table with {@code ORDER BY last_activity_at DESC LIMIT ?}.
+     */
+    List<ConversationSummary> findRecentConversations(int limit);
 }

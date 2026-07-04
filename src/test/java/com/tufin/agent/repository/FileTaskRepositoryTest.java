@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.tufin.agent.config.AppProperties;
+import com.tufin.agent.model.ConversationSummary;
 import com.tufin.agent.model.TaskRecord;
 import com.tufin.agent.model.TaskRollup;
 import com.tufin.agent.model.TraceStep;
@@ -48,6 +49,14 @@ class FileTaskRepositoryTest {
                 new TraceStep.TokenUsage(1, 2, 3));
         return new TaskRecord(id, "task " + id, "answer " + id, List.of(step),
                 new TaskRollup(10, 1, 2, 1, 0, 0), Instant.parse("2026-07-01T10:15:30Z"), conversationId, 0);
+    }
+
+    /** As {@link #turn} but with an explicit opening-task text and created-at (for recency tests). */
+    private TaskRecord turnAt(String id, String conversationId, String task, String createdAt) {
+        TraceStep step = TraceStep.finalAnswer(1, 1, List.of("calculator"), "done", 5,
+                new TraceStep.TokenUsage(1, 2, 3));
+        return new TaskRecord(id, task, "answer " + id, List.of(step),
+                new TaskRollup(10, 1, 2, 1, 0, 0), Instant.parse(createdAt), conversationId, 0);
     }
 
     @Test
@@ -114,5 +123,25 @@ class FileTaskRepositoryTest {
                 .containsExactly("a", "b");
         assertThat(reloaded.findConversationPage("c1", 0, 1)).extracting(TaskRecord::taskId)
                 .containsExactly("a");
+    }
+
+    @Test
+    void findRecentConversationsRanksByLastActivityNewestFirstAndHonoursLimit() {
+        FileTaskRepository repo = new FileTaskRepository(propsFor(tempDir.resolve("t.jsonl")), mapper());
+        repo.save(turnAt("a0", "A", "opening task in conversation A", "2026-07-01T10:00:00Z"));
+        repo.save(turnAt("a1", "A", "follow-up in A", "2026-07-01T12:00:00Z"));    // A last active 12:00
+        repo.save(turnAt("b0", "B", "opening task in B", "2026-07-01T11:00:00Z"));  // B last active 11:00
+        repo.save(turnAt("c0", "C", "opening task in C", "2026-07-01T09:00:00Z"));  // C last active 09:00
+
+        List<ConversationSummary> recent = repo.findRecentConversations(10);
+        assertThat(recent).extracting(ConversationSummary::conversationId).containsExactly("A", "B", "C");
+
+        ConversationSummary a = recent.get(0);
+        assertThat(a.turnCount()).isEqualTo(2);
+        assertThat(a.firstTask()).isEqualTo("opening task in conversation A");   // opening task, untruncated
+        assertThat(a.lastActivityAt()).isEqualTo(Instant.parse("2026-07-01T12:00:00Z"));
+
+        assertThat(repo.findRecentConversations(2)).extracting(ConversationSummary::conversationId)
+                .containsExactly("A", "B");
     }
 }

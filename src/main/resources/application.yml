@@ -41,6 +41,9 @@ app:
   conversation:
     # How many recent prior turns (task + answer only) to resend as context on a follow-up.
     context-turns: 10
+    # GET /conversations: default and max number of conversation cards to return.
+    list-default: 20
+    list-max: 100
 
 logging:
   level:

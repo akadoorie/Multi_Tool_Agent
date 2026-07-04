@@ -4,6 +4,7 @@ import com.tufin.agent.agent.AgentLoop;
 import com.tufin.agent.agent.LoopResult;
 import com.tufin.agent.agent.PriorTurn;
 import com.tufin.agent.config.AppProperties;
+import com.tufin.agent.dto.ConversationSummaryDto;
 import com.tufin.agent.dto.ConversationTurnDto;
 import com.tufin.agent.dto.DtoMapper;
 import com.tufin.agent.dto.PagedConversationResponse;
@@ -157,5 +158,17 @@ public class AgentService {
                 .toList();
         int totalPages = (int) Math.ceil((double) total / size);
         return new PagedConversationResponse(items, page, size, total, totalPages);
+    }
+
+    /**
+     * Lists the {@code limit} most-recently-active conversations, newest first, as lightweight cards
+     * ({@code first_task} is the opening task, not a generated summary). No LLM involved.
+     *
+     * @param limit max conversations to return (validated at the controller).
+     */
+    public List<ConversationSummaryDto> listRecentConversations(int limit) {
+        return repository.findRecentConversations(limit).stream()
+                .map(DtoMapper::toConversationSummary)
+                .toList();
     }
 }

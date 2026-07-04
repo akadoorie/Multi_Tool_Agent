@@ -2,6 +2,7 @@ package com.tufin.agent.controller;
 
 import com.tufin.agent.config.AppProperties;
 import com.tufin.agent.dto.ApiError;
+import com.tufin.agent.dto.ConversationSummaryDto;
 import com.tufin.agent.dto.PagedConversationResponse;
 import com.tufin.agent.dto.TaskRecordDto;
 import com.tufin.agent.dto.TaskRequest;
@@ -9,11 +10,13 @@ import com.tufin.agent.exception.InvalidRequestException;
 import com.tufin.agent.service.AgentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,6 +34,32 @@ public class ConversationController {
     public ConversationController(AgentService service, AppProperties props) {
         this.service = service;
         this.props = props;
+    }
+
+    @Operation(
+            summary = "List recent conversations",
+            description = "Returns the most recently active conversations, newest first, as lightweight "
+                    + "cards. Each card's `first_task` is that conversation's opening task (a subject "
+                    + "line) — NOT a generated summary. No LLM is involved.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Recent conversations, newest first",
+                    content = @Content(array = @ArraySchema(
+                            schema = @Schema(implementation = ConversationSummaryDto.class)))),
+            @ApiResponse(responseCode = "400", description = "Invalid limit",
+                    content = @Content(schema = @Schema(implementation = ApiError.class)))
+    })
+    @GetMapping("/conversations")
+    public List<ConversationSummaryDto> listConversations(
+            @Parameter(description = "Max conversations to return. Defaults to app.conversation.list-default; "
+                    + "capped at app.conversation.list-max.")
+            @RequestParam(required = false) Integer limit) {
+        // Config-driven validation, same shape as the paging params.
+        int effectiveLimit = (limit == null) ? props.conversation().listDefault() : limit;
+        if (effectiveLimit < 1 || effectiveLimit > props.conversation().listMax()) {
+            throw new InvalidRequestException(
+                    "Invalid limit: must be between 1 and " + props.conversation().listMax() + ".");
+        }
+        return service.listRecentConversations(effectiveLimit);
     }
 
     @Operation(

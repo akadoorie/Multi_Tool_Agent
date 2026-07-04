@@ -12,11 +12,13 @@ import com.tufin.agent.TestFixtures;
 import com.tufin.agent.agent.AgentLoop;
 import com.tufin.agent.agent.LoopResult;
 import com.tufin.agent.agent.PriorTurn;
+import com.tufin.agent.dto.ConversationSummaryDto;
 import com.tufin.agent.dto.ConversationTurnDto;
 import com.tufin.agent.dto.PagedConversationResponse;
 import com.tufin.agent.dto.PagedTasksResponse;
 import com.tufin.agent.dto.TaskRecordDto;
 import com.tufin.agent.exception.ConversationNotFoundException;
+import com.tufin.agent.model.ConversationSummary;
 import com.tufin.agent.model.TaskRecord;
 import com.tufin.agent.model.TaskRollup;
 import com.tufin.agent.repository.TaskRepository;
@@ -170,5 +172,21 @@ class AgentServiceTest {
         assertThatThrownBy(() -> service.getConversation("nope", 0, 20))
                 .isInstanceOf(ConversationNotFoundException.class)
                 .hasMessageContaining("nope");
+    }
+
+    @Test
+    void listRecentConversationsMapsAndTruncatesFirstTask() {
+        String longTask = "a".repeat(150);
+        when(repository.findRecentConversations(20)).thenReturn(List.of(
+                new ConversationSummary("c1", longTask, 3, Instant.parse("2026-07-01T12:00:00Z")),
+                new ConversationSummary("c2", "short opener", 1, Instant.parse("2026-07-01T11:00:00Z"))));
+
+        List<ConversationSummaryDto> cards = service.listRecentConversations(20);
+
+        assertThat(cards).extracting(ConversationSummaryDto::conversationId).containsExactly("c1", "c2");
+        ConversationSummaryDto first = cards.get(0);
+        assertThat(first.turnCount()).isEqualTo(3);
+        assertThat(first.firstTask()).hasSize(101).endsWith("…");   // truncated to 100 chars + ellipsis
+        assertThat(cards.get(1).firstTask()).isEqualTo("short opener");   // short text is left as-is
     }
 }

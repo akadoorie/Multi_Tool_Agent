@@ -238,9 +238,15 @@ body field (the body is always just `{ "task": "..." }`):
 |-----------|-----------|
 | `POST /task` | starts a **new** conversation; the response returns a minted `conversation_id`, `conversation_order = 0`. |
 | `POST /conversations/{conversation_id}/task` | a **follow-up** — continues that conversation; `conversation_order` = the next position (2nd turn is `1`, …). Unknown id → **404** (`ConversationNotFoundException`). |
+| `GET /conversations` | the most-recently-active conversations, newest first, as lightweight `ConversationSummaryDto` cards (`limit` optional: default `app.conversation.list-default`, capped at `app.conversation.list-max`; out of range → 400). |
 | `GET /conversations/{conversation_id}` | the conversation's turns, oldest-first (paginated like `GET /tasks`), as lightweight `ConversationTurnDto`s; a turn's full trace is still at `GET /tasks/{taskId}`. |
 
 `conversation_id` is **not** a request-body field — a follow-up identifies its conversation by the path.
+
+**Discovering conversations.** `GET /conversations` is the way to find a conversation without already
+holding its id. Each card carries `conversation_id`, `turn_count`, `last_activity_at`, and `first_task`
+— and `first_task` is deliberately just the conversation's **opening task, truncated (a subject line),
+not a generated summary**. Nothing on this endpoint calls the LLM.
 
 **Context strategy (bounded & DB-ready).** A follow-up loads only the **last K turns** of its
 conversation (`app.conversation.context-turns`, default 10) — never the whole thing — and each prior
