@@ -8,6 +8,7 @@ JSON Lines file, and latency + token usage are first-class outputs.
 - **Java 21 · Spring Boot 3.4 · Spring AI 1.1 (Anthropic) · Maven · Docker**
 - Tools: **Calculator, Weather, Web Search, Unit Converter (length, weight, temperature, currency)** (all real, keyless except the LLM)
 - Persistence: **file-only** (append-only JSONL + in-memory index) — no database
+- Worked examples: see **[EXAMPLES.md](EXAMPLES.md)** — 8 real tasks with their outputs and full traces
 
 ---
 
@@ -315,6 +316,10 @@ The API and stored JSON use `snake_case` (`task_id`, `final_answer`, …).
   "conversation_order": 0
 }
 ```
+
+> **More worked examples:** see **[EXAMPLES.md](EXAMPLES.md)** — eight real captured tasks (every
+> tool, the `Unsupported` path, a parallel multi-tool task, and a multi-turn follow-up), each with
+> its request, final answer, and full trace.
 
 ### Trace fields
 
