@@ -65,6 +65,10 @@ public class AgentLoop {
         this.props = props;
     }
 
+    /** Anthropic-native prompt-cache token counts for one model call (0 when absent / not cached). */
+    private record CacheUsage(long read, long creation) {
+    }
+
     /** Single-shot convenience: run a task with no prior conversation context. */
     public LoopResult run(String task) {
         return run(task, List.of());
@@ -247,10 +251,6 @@ public class AgentLoop {
     /** Accepts whatever numeric type the Spring AI {@code Usage} getters return (Integer or Long). */
     private static Integer asInt(Number value) {
         return value == null ? 0 : value.intValue();
-    }
-
-    /** Anthropic-native prompt-cache token counts for one model call (0 when absent / not cached). */
-    private record CacheUsage(long read, long creation) {
     }
 
     /**
