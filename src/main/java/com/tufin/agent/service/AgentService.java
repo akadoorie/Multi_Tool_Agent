@@ -4,26 +4,21 @@ import com.tufin.agent.agent.AgentLoop;
 import com.tufin.agent.agent.LoopResult;
 import com.tufin.agent.agent.PriorTurn;
 import com.tufin.agent.config.AppProperties;
-import com.tufin.agent.dto.ConversationSummaryDto;
-import com.tufin.agent.dto.ConversationTurnDto;
-import com.tufin.agent.dto.DtoMapper;
-import com.tufin.agent.dto.PagedConversationResponse;
-import com.tufin.agent.dto.PagedConversationSummaries;
-import com.tufin.agent.dto.PagedTasksResponse;
-import com.tufin.agent.dto.TaskRecordDto;
+import com.tufin.agent.dto.*;
 import com.tufin.agent.exception.ConversationNotFoundException;
 import com.tufin.agent.exception.TaskNotFoundException;
 import com.tufin.agent.model.TaskRecord;
 import com.tufin.agent.repository.TaskRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
+import org.springframework.stereotype.Service;
+
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.slf4j.MDC;
-import org.springframework.stereotype.Service;
 
 /**
  * Orchestrates a task end to end: resolve its conversation, run the agent loop (seeded with capped
@@ -46,6 +41,10 @@ public class AgentService {
         this.repository = repository;
         this.clock = clock;
         this.props = props;
+    }
+
+    /** A resolved conversation: its id and the capped prior turns (oldest first) to feed as context. */
+    private record Conversation(String id, List<PriorTurn> history) {
     }
 
     /** Runs a standalone task (a fresh one-turn conversation). */
@@ -99,10 +98,6 @@ public class AgentService {
                 .map(record -> new PriorTurn(record.task(), record.finalAnswer()))
                 .toList();
         return new Conversation(conversationId, history);
-    }
-
-    /** A resolved conversation: its id and the capped prior turns (oldest first) to feed as context. */
-    private record Conversation(String id, List<PriorTurn> history) {
     }
 
     /** Returns a stored task, or throws {@link TaskNotFoundException} (mapped to 404). */
