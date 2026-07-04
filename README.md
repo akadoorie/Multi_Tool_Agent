@@ -6,21 +6,70 @@ that reasons step-by-step and calls **real tools** to solve it, and returns a fi
 JSON Lines file, and latency + token usage are first-class outputs.
 
 - **Java 21 · Spring Boot 3.4 · Spring AI 1.1 (Anthropic) · Maven · Docker**
-- Tools: **Calculator, Weather, Web Search, Unit/Currency Converter** (all real, keyless except the LLM)
+- Tools: **Calculator, Weather, Web Search, Unit Converter (length, weight, temperature, currency)** (all real, keyless except the LLM)
 - Persistence: **file-only** (append-only JSONL + in-memory index) — no database
 
 ---
 
-## Assumptions
+## Acronyms
 
-Assumptions made to scope this exercise:
+Short glossary of the acronyms used in this document:
+
+| Acronym | Meaning |
+|---------|---------|
+| DDG | DuckDuckGo — the search provider the web-search tool tries first. |
+| DI | Dependency Injection — the framework supplies an object's dependencies instead of it creating them. |
+| DIP | Dependency Inversion Principle — depend on abstractions (interfaces), not concrete classes. (The **D** in SOLID.) |
+| DTO | Data Transfer Object — a class shaped for the API response, kept separate from internal storage. |
+| ISP | Interface Segregation Principle — keep interfaces small and focused. (The **I** in SOLID.) |
+| LSP | Liskov Substitution Principle — any implementation must be usable wherever its interface is expected. (The **L** in SOLID.) |
+| MDC | Mapped Diagnostic Context — a per-request key/value store for logs; here it stamps the `task_id` on every log line. |
+| OCP | Open/Closed Principle — open to extension, closed to modification (add a tool without changing existing code). (The **O** in SOLID.) |
+| ORM | Object-Relational Mapping — a library that maps database rows to objects (deliberately not used here). |
+| SRP | Single Responsibility Principle — each class does one thing. (The **S** in SOLID.) |
+
+---
+
+## Functional Requirements
+
+What the system does:
+
+- **Task in → answer out** — accept a natural-language task over a REST API and return a final answer.
+- **Agentic tool use** — an LLM reasons step-by-step and calls **real tools** to solve the task (it never answers math/current-data from memory).
+- **Four real tools** — calculator, weather, web search, and unit conversion (length, weight, temperature, currency).
+- **Structured trace** — return every reasoning step and tool call (thought, tool, input, output), in order.
+- **Observability outputs** — latency and token usage, per step and as a task rollup.
+- **Persistence & retrieval** — store every task and fetch one back (`GET /tasks/{id}`).
+- **Multi-turn conversations** — follow-up tasks that resolve references to earlier turns (`POST /conversations/{id}/task`).
+- **Operations surface** — a health check (`GET /health`) and a Swagger UI to drive and document the API.
+
+### Assumptions
+
+Assumptions made to scope the functional behaviour above:
 
 1. **Tools are dedicated services the agent delegates to**, not work the LLM does in its head (some remote APIs, some local libraries).
 2. **Tools are free and keyless** — only the LLM needs an API key.
 3. **Out-of-scope tasks answer `Unsupported`** — if no tool is invoked (e.g. "what time is it?"), the agent refuses rather than guessing.
-4. **Single-turn, self-contained tasks** — no memory across requests.
-5. **Synchronous, blocking response, but tasks still run in parallel** — each caller waits for its own result; the server still handles many requests concurrently.
-6. **A capable, tool-following model** — trusted to pick the right tool and produce valid inputs (hence a current Claude model).
+4. **Conversation state is server-side and bounded** — a task is self-contained by default; a follow-up resolves references to earlier turns by resending only the last K turns (task + answer) as context, not the unbounded history. *Example:* after turn 1 *"What is the weather in Tel Aviv?"* → *"30.1°C"*, the follow-up *"Convert that to Fahrenheit"* resends just turn 1's task + answer, so the agent resolves *"that"* to 30.1°C (full flow in §5).
+5. **A capable, tool-following model** — trusted to pick the right tool and produce valid inputs (hence a current Claude model).
+6. **A task-history listing is provided** — `GET /tasks` returns stored tasks newest-first, paginated, for browsing and observability; the core retrieval remains `GET /tasks/{id}`.
+
+---
+
+## Non-Functional Requirements
+
+How well it does it:
+
+- **Grounding / anti-hallucination** — answers derive only from real tool output; the final answer is always an LLM synthesis, never a raw tool dump.
+- **Observability** — trace, latency, and tokens are first-class; `task_id` in the MDC correlates every log line.
+- **Reliability** — a tool failure never crashes a request; a max-iterations cap and per-tool HTTP timeouts bound every task.
+- **Determinism / low variance** — `temperature=0` and a bounded iteration count for predictable output.
+- **Extensibility (OCP)** — a new tool is one `@Component`; persistence sits behind a `TaskRepository` interface (DB-swappable).
+- **Explainability & simplicity** — an explicit ~40-line loop and a file store, no framework/ORM magic.
+- **Security** — the API key is never committed (env-injected); tool output is treated as data, not instructions; the calculator uses a safe parser (no `eval`).
+- **Performance & cost** — prompt caching of the stable prefix, bounded conversation context, and an O(1) in-memory index.
+- **Concurrency** — each request is synchronous (the caller blocks for its own result), yet the server serves many requests in parallel; task writes are serialized to keep the store consistent.
+- **Portability & testability** — runs with only Docker + an Anthropic key (tools are keyless); deterministic tests with a mocked LLM plus an opt-in live spike.
 
 ---
 
@@ -62,6 +111,28 @@ flowchart TD
     Controller -.->|"GET /tasks/id (O(1) lookup)"| Repo
 ```
 
+### Tools & data sources
+
+Each tool gets its data either from a **remote API** (an HTTP call to an external service) or a **local
+library** (code running in-process, no network):
+
+| Tool | How it gets data | Source |
+|------|------------------|--------|
+| `calculator` | Local library | exp4j math-expression parser (in-process, no network). |
+| `weather` | Remote API | Open-Meteo — geocode the city (`geocoding-api.open-meteo.com`), then current conditions (`api.open-meteo.com`). |
+| `web_search` | Remote API | DuckDuckGo Instant Answer (`api.duckduckgo.com`), falling back to Wikipedia REST (`en.wikipedia.org`). |
+| `unit_converter` — length, weight, temperature | Local library | Built-in constant conversion factors (in-process, no network). |
+| `unit_converter` — currency | Remote API | Frankfurter live rates (`api.frankfurter.app`). |
+
+All remote sources are **keyless** — only the LLM needs an API key.
+
+### Caching
+
+Two caches, in different layers — nothing else is cached (tool calls and final answers always run fresh):
+
+- **LLM prompt cache** — the stable system-prompt + tool-definitions prefix is marked cacheable (Anthropic `SYSTEM_AND_TOOLS`), so repeat model calls bill it at ~0.1× within Anthropic's ~5-minute TTL; the read/creation token counts are surfaced in the rollup. The byte-identical-prefix design and observability are detailed in §4.
+- **In-memory task index** — on startup the repository loads the JSONL into `task_id → record` (and `conversation_id → task-ids`) maps, making `GET /tasks/{id}` an O(1) lookup instead of a file scan. It mirrors the whole store with no eviction, which is the documented scaling ceiling (§11).
+
 ---
 
 ## 2. Setup & run
@@ -80,10 +151,9 @@ flowchart TD
    ```
 4. **Verify:**
    - Health: <http://localhost:8080/health> → `{"status":"UP"}`
-   - Swagger UI: <http://localhost:8080/swagger-ui.html>
-   - OpenAPI JSON: <http://localhost:8080/v3/api-docs>
+   - Swagger UI (the app's UI): <http://localhost:8080/swagger-ui.html> — how to drive every endpoint from it is §3.
 
-5. **Submit a task** — via Swagger UI (`POST /task`, "Try it out"), or curl:
+5. **Submit a task** — via the Swagger UI (§3), or curl:
    ```bash
    curl -s -X POST http://localhost:8080/task \
      -H "Content-Type: application/json" \
@@ -112,7 +182,29 @@ flowchart TD
 
 ---
 
-## 3. Agent reasoning-loop design
+## 3. User interface (Swagger UI)
+
+The service is API-first; its **only UI is Swagger UI**, served at <http://localhost:8080/swagger-ui.html>
+(raw OpenAPI JSON at `/v3/api-docs`), generated from the controllers by springdoc — so it never drifts
+from the real API.
+
+**Every agent operation can be driven from this page — no curl required.** Using **"Try it out"** on any
+endpoint sends a live request and renders the real response inline (final answer, full trace, token
+usage, and latency rollup). From here you can:
+
+- submit a new task — `POST /task`
+- continue a conversation with a follow-up — `POST /conversations/{id}/task`
+- fetch a task with its full trace — `GET /tasks/{id}`
+- page the task history — `GET /tasks`
+- discover and open conversations — `GET /conversations`, `GET /conversations/{id}`
+- check health — `GET /health`
+
+Request/response schemas, field descriptions, and examples are shown per endpoint (response shape
+detailed in §5, Data model).
+
+---
+
+## 4. Agent reasoning-loop design
 
 The loop (`AgentLoop.run`) is a plain, ~40-line state loop — deliberately not hidden inside the
 framework's automatic tool execution, because the assignment needs a trace of every step:
@@ -160,7 +252,7 @@ separate generation carrying the `tool_use`). So the loop reads **all** of them
 (`response.getResults()`) and aggregates their text and tool calls into one assistant turn, instead of
 reading only `response.getResult()` — the *first* generation. Reading only the first would miss a tool
 call that landed in a later generation and make the agent silently skip the tool. A regression test
-pins this behaviour, and it is exactly what the live connectivity spike (§9) surfaced.
+pins this behaviour, and it is exactly what the live connectivity spike (§10) surfaced.
 
 ### Token & latency capture
 
@@ -185,7 +277,7 @@ fields surface whether caching is engaging rather than leaving it a silent no-op
 
 ---
 
-## 4. Data model
+## 5. Data model
 
 | Type          | Role                                                                                  |
 |---------------|---------------------------------------------------------------------------------------|
@@ -288,7 +380,7 @@ that needs no tool ("write a haiku about that") still hits the no-tool backstop 
 
 ---
 
-## 5. Design patterns & SOLID
+## 6. Design patterns & SOLID
 
 - **Strategy** — each tool is a `Tool` implementation; **Registry** — `ToolRegistry` resolves one by
   name; **Repository** — persistence hides behind `TaskRepository`; **constructor DI** throughout.
@@ -308,7 +400,7 @@ but never guarantees byte-identical output.)
 
 ---
 
-## 6. Configuration reference
+## 7. Configuration reference
 
 All tunables live in `src/main/resources/application.yml`, bound to the typed `AppProperties` record.
 
@@ -335,7 +427,7 @@ resolves from the environment and Docker Compose injects from `.env`.
 
 ---
 
-## 7. How to add a new tool
+## 8. How to add a new tool
 
 1. Create a class in `com.tufin.agent.tool` implementing `Tool` (`name`, `description`, `inputSchema`,
    `execute`) and annotate it `@Component`.
@@ -356,7 +448,7 @@ public class CoinFlipTool implements Tool {
 
 ---
 
-## 8. Web search behaviour
+## 9. Web search behaviour
 
 Web search returns **concise instant-answer / encyclopedic summaries with sources**, not a full
 search-engine result-page crawl. DuckDuckGo's Instant Answer API is the fast path, but it is empty for
@@ -371,7 +463,7 @@ type is registered with the JSON converter.
 
 ---
 
-## 9. Running the tests
+## 10. Running the tests
 
 ```bash
 ./mvnw test        # or: mvn test
@@ -399,11 +491,11 @@ type is registered with the JSON converter.
 > `SpringAiConnectivitySpike` (profile `spike`) closes that gap: it runs a *real* task through the real
 > `AgentLoop` against the live API and asserts a tool actually fired and a grounded answer came back:
 > `ANTHROPIC_API_KEY=... ./mvnw spring-boot:run -Dspring-boot.run.profiles=spike`.
-> This is what surfaced the multi-`Generation` split described in §3 — a bug the mocked tests could not see.
+> This is what surfaced the multi-`Generation` split described in §4 — a bug the mocked tests could not see.
 
 ---
 
-## 10. Trade-offs & limitations
+## 11. Trade-offs & limitations
 
 - **File store, not a database.** Simple and fully explainable (no ORM magic), and behind a
   `TaskRepository` interface so a DB is a one-class change. The trade-off: no transactions, no rich
