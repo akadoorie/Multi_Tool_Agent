@@ -12,25 +12,6 @@ JSON Lines file, and latency + token usage are first-class outputs.
 
 ---
 
-## Acronyms
-
-Short glossary of the acronyms used in this document:
-
-| Acronym | Meaning |
-|---------|---------|
-| DDG | DuckDuckGo — the search provider the web-search tool tries first. |
-| DI | Dependency Injection — the framework supplies an object's dependencies instead of it creating them. |
-| DIP | Dependency Inversion Principle — depend on abstractions (interfaces), not concrete classes. (The **D** in SOLID.) |
-| DTO | Data Transfer Object — a class shaped for the API response, kept separate from internal storage. |
-| ISP | Interface Segregation Principle — keep interfaces small and focused. (The **I** in SOLID.) |
-| LSP | Liskov Substitution Principle — any implementation must be usable wherever its interface is expected. (The **L** in SOLID.) |
-| MDC | Mapped Diagnostic Context — a per-request key/value store for logs; here it stamps the `task_id` on every log line. |
-| OCP | Open/Closed Principle — open to extension, closed to modification (add a tool without changing existing code). (The **O** in SOLID.) |
-| ORM | Object-Relational Mapping — a library that maps database rows to objects (deliberately not used here). |
-| SRP | Single Responsibility Principle — each class does one thing. (The **S** in SOLID.) |
-
----
-
 ## Functional Requirements
 
 What the system does:
@@ -62,11 +43,11 @@ Assumptions made to scope the functional behaviour above:
 How well it does it:
 
 - **Grounding / anti-hallucination** — answers derive only from real tool output; the final answer is always an LLM synthesis, never a raw tool dump.
-- **Observability** — trace, latency, and tokens are first-class; `task_id` in the MDC correlates every log line.
+- **Observability** — trace, latency, and tokens are first-class; `task_id` in the MDC (Mapped Diagnostic Context) correlates every log line.
 - **Reliability** — a tool failure never crashes a request; a max-iterations cap and per-tool HTTP timeouts bound every task.
 - **Determinism / low variance** — `temperature=0` and a bounded iteration count for predictable output.
-- **Extensibility (OCP)** — a new tool is one `@Component`; persistence sits behind a `TaskRepository` interface (DB-swappable).
-- **Explainability & simplicity** — an explicit ~40-line loop and a file store, no framework/ORM magic.
+- **Extensibility (OCP — Open/Closed Principle)** — a new tool is one `@Component`; persistence sits behind a `TaskRepository` interface (DB-swappable).
+- **Explainability & simplicity** — an explicit ~40-line loop and a file store, no framework/ORM (Object-Relational Mapping) magic.
 - **Security** — the API key is never committed (env-injected); tool output is treated as data, not instructions; the calculator uses a safe parser (no `eval`).
 - **Performance & cost** — prompt caching of the stable prefix, bounded conversation context, and an O(1) in-memory index.
 - **Concurrency** — each request is synchronous (the caller blocks for its own result), yet the server serves many requests in parallel; task writes are serialized to keep the store consistent.
@@ -285,7 +266,7 @@ fields surface whether caching is engaging rather than leaving it a silent no-op
 | `TaskRecord`  | Stored domain record (source of truth in `tasks.jsonl`); includes `conversation_id` / `conversation_order`. |
 | `TraceStep`   | One ordered step: `model_call`, `tool` (name/input/output), `reasoning` (explanation preceding an `Unsupported` verdict), or `final_answer` (carries `tools_used` — the distinct tools the task invoked). |
 | `TaskRollup`  | Per-task totals: latency, input/output tokens, iterations, and prompt-cache read/creation tokens. |
-| `TaskRequest` / `TaskRecordDto` / `ApiError` | API DTOs. `TaskRequest` accepts an optional `conversation_id`; `TaskRecordDto` echoes `conversation_id` / `conversation_order`. |
+| `TaskRequest` / `TaskRecordDto` / `ApiError` | API DTOs (Data Transfer Objects). `TaskRequest` accepts an optional `conversation_id`; `TaskRecordDto` echoes `conversation_id` / `conversation_order`. |
 | `ConversationTurnDto` | Lightweight per-turn view for `GET /conversations/{id}`: task, answer, `tools_used`, `created_at` — not the full trace (fetch that via `GET /tasks/{taskId}`). |
 
 The API and stored JSON use `snake_case` (`task_id`, `final_answer`, …).
@@ -388,10 +369,10 @@ that needs no tool ("write a haiku about that") still hits the no-tool backstop 
 ## 6. Design patterns & SOLID
 
 - **Strategy** — each tool is a `Tool` implementation; **Registry** — `ToolRegistry` resolves one by
-  name; **Repository** — persistence hides behind `TaskRepository`; **constructor DI** throughout.
-- **SRP:** controller (HTTP) / service (orchestration) / tool (capability) / repository (storage) each
-  do one thing. **OCP:** adding a tool needs no change to the loop, registry, or controller. **LSP:**
-  tools are interchangeable behind `Tool`. **ISP:** `Tool` and `TaskRepository` are small. **DIP:** the
+  name; **Repository** — persistence hides behind `TaskRepository`; **constructor DI (Dependency Injection)** throughout.
+- **SRP (Single Responsibility Principle):** controller (HTTP) / service (orchestration) / tool (capability) / repository (storage) each
+  do one thing. **OCP:** adding a tool needs no change to the loop, registry, or controller. **LSP (Liskov Substitution Principle):**
+  tools are interchangeable behind `Tool`. **ISP (Interface Segregation Principle):** `Tool` and `TaskRepository` are small. **DIP (Dependency Inversion Principle):** the
   service and loop depend on the `Tool` / `TaskRepository` abstractions, injected via the constructor.
 
 ### Model choice & the sampling flag
