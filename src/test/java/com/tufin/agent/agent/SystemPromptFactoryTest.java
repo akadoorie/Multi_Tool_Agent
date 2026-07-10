@@ -2,20 +2,38 @@ package com.tufin.agent.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.tufin.agent.tool.CalculatorTool;
+import com.tufin.agent.tool.Tool;
+import com.tufin.agent.tool.ToolRegistry;
+import com.tufin.agent.tool.ToolResult;
+import com.tufin.agent.tool.UnitConverterTool;
+import com.tufin.agent.tool.WeatherTool;
+import com.tufin.agent.tool.WebSearchTool;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
  * Verifies the system prompt carries the instructions the whole design leans on: tool-first rules,
  * an injected "current" date, and the scope rule that yields {@code Unsupported} for out-of-scope
  * tasks. A fixed {@link Clock} makes the date assertion deterministic.
+ *
+ * <p>The tool list is generated from the {@link ToolRegistry}, so the factory is built from a real
+ * registry of the real tools. Their constructors only store dependencies (never dereferenced by
+ * {@code name()}/{@code description()}), so {@code null} deps are safe here.
  */
 class SystemPromptFactoryTest {
 
     private final Clock fixedClock = Clock.fixed(Instant.parse("2026-07-01T12:00:00Z"), ZoneOffset.UTC);
-    private final SystemPromptFactory factory = new SystemPromptFactory(fixedClock);
+    private final ToolRegistry registry = new ToolRegistry(List.of(
+            new CalculatorTool(),
+            new WeatherTool(null, null),
+            new WebSearchTool(null, null),
+            new UnitConverterTool(null, null)));
+    private final SystemPromptFactory factory = new SystemPromptFactory(fixedClock, registry);
 
     @Test
     void declaresUnsupportedForTasksOutsideTheToolsScope() {
@@ -30,11 +48,51 @@ class SystemPromptFactoryTest {
     }
 
     @Test
-    void injectsTheCurrentDateAndTheFourToolRules() {
+    void injectsTheCurrentDateAndListsEveryRegisteredTool() {
         String prompt = factory.build();
 
         assertThat(prompt).contains("2026-07-01");
+        // The tool list is generated from the registry, not hardcoded.
         assertThat(prompt).contains("calculator", "weather", "unit_converter", "web_search");
+        assertThat(prompt).contains("4 tools");
+    }
+
+    @Test
+    void generatesTheToolListFromTheRegistrySoANewToolNeedsNoPromptEdit() {
+        // The Open/Closed win: registering another tool makes it appear in the prompt (name +
+        // description) and bumps the count, with no change to SystemPromptFactory.
+        Tool translator = new Tool() {
+            @Override
+            public String name() {
+                return "translator";
+            }
+
+            @Override
+            public String description() {
+                return "Translate text between languages.";
+            }
+
+            @Override
+            public String inputSchema() {
+                return "{}";
+            }
+
+            @Override
+            public ToolResult execute(JsonNode input) {
+                return ToolResult.error("stub — not exercised in this test");
+            }
+        };
+        ToolRegistry withExtra = new ToolRegistry(List.of(
+                new CalculatorTool(),
+                new WeatherTool(null, null),
+                new WebSearchTool(null, null),
+                new UnitConverterTool(null, null),
+                translator));
+
+        String prompt = new SystemPromptFactory(fixedClock, withExtra).build();
+
+        assertThat(prompt).contains("5 tools");
+        assertThat(prompt).contains("`translator`: Translate text between languages.");
     }
 
     @Test

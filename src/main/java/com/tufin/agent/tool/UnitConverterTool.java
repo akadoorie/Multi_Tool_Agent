@@ -42,7 +42,9 @@ public class UnitConverterTool implements Tool {
     public String description() {
         return "Convert a value between units. Categories: 'length' (mm, cm, m, km, in, ft, yd, mi), "
                 + "'weight' (mg, g, kg, t, oz, lb), 'temperature' (C, F, K), and 'currency' "
-                + "(ISO codes like USD, EUR, ILS via live rates). "
+                + "(ISO codes like USD, EUR, ILS via live rates). Only these categories are supported; "
+                + "conversions in any other dimension (e.g. speed, data size, time, power, energy, "
+                + "pressure) are NOT supported. "
                 + "Input: {\"category\":\"temperature\", \"value\":100, \"from\":\"C\", \"to\":\"F\"}.";
     }
 

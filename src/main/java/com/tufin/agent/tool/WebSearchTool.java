@@ -40,8 +40,9 @@ public class WebSearchTool implements Tool {
 
     @Override
     public String description() {
-        return "Search the web for factual/encyclopedic information and return a concise summary with "
-                + "sources. Use for general knowledge questions you cannot answer from the other tools. "
+        return "Search the web for factual/encyclopedic information (including definitions and formulas) "
+                + "and return a concise summary with sources. Use for general knowledge questions you "
+                + "cannot answer from the other tools. "
                 + "Input: {\"query\": \"who invented the telephone\"}.";
     }
 
