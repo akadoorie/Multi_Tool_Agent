@@ -8,17 +8,10 @@ import com.tufin.agent.model.TraceStep;
 import com.tufin.agent.tool.ToolRegistry;
 import com.tufin.agent.tool.ToolResult;
 import com.tufin.agent.util.JsonSupport;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.anthropic.api.AnthropicApi;
-import org.springframework.ai.chat.messages.AssistantMessage;
-import org.springframework.ai.chat.messages.Message;
-import org.springframework.ai.chat.messages.SystemMessage;
-import org.springframework.ai.chat.messages.ToolResponseMessage;
-import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.messages.*;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -26,6 +19,10 @@ import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * The explicit reason&rarr;act&rarr;observe loop &mdash; the heart of the agent.
@@ -105,6 +102,9 @@ public class AgentLoop {
         int maxIterations = props.agent().maxIterations();
 
         for (int iteration = 1; iteration <= maxIterations; iteration++) {
+            // ── REASON ──────────────────────────────────────────────────────────
+            // Call the model; it reasons over the conversation and returns either a
+            // final answer (no tool calls) or one or more tool-call requests.
             long modelStartNanos = System.nanoTime();
             ChatResponse response = chatModel.call(new Prompt(conversation, options));
             long modelLatencyMs = elapsedMs(modelStartNanos);
@@ -136,6 +136,7 @@ public class AgentLoop {
             conversation.add(assistant);
 
             if (toolCalls.isEmpty()) {
+                // The model reasoned to a plain-text answer — no ACT/OBSERVE this turn; the task ends here.
                 // Scope gate: if the whole task ran without invoking any tool, the answer is not
                 // tool-grounded, so it is out of scope -> return exactly "Unsupported" regardless of
                 // what the model produced. Tool failures still count as "used" (the error is a real,
@@ -181,6 +182,8 @@ public class AgentLoop {
             // One model_call step per iteration carries the reasoning text + tokens for this turn.
             trace.add(TraceStep.modelCall(++stepIndex, iteration, assistantText, modelLatencyMs, usage));
 
+            // ── ACT ─────────────────────────────────────────────────────────────
+            // The model requested tools — execute each real tool it asked for (timed).
             List<ToolResponseMessage.ToolResponse> toolResponses = new ArrayList<>();
             for (AssistantMessage.ToolCall call : toolCalls) {
                 JsonNode input = json.parseOrEmpty(call.arguments());
@@ -193,6 +196,9 @@ public class AgentLoop {
                 toolResponses.add(new ToolResponseMessage.ToolResponse(
                         call.id(), call.name(), json.write(result)));
             }
+            // ── OBSERVE ──────────────────────────────────────────────────────────
+            // Feed the real tool results back into the conversation so the next
+            // iteration's REASON observes them, then loop.
             conversation.add(ToolResponseMessage.builder().responses(toolResponses).build());
         }
 
