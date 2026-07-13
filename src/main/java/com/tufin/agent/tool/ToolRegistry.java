@@ -10,7 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Resolves and executes tools by name. Built from every {@link Tool} bean Spring finds, so the set
+ * Resolves and executes tools by name. Built from every {@link ITool} bean Spring finds, so the set
  * of tools is discovered automatically at startup.
  */
 @Component
@@ -18,11 +18,11 @@ public class ToolRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(ToolRegistry.class);
 
-    private final Map<String, Tool> byName;
+    private final Map<String, ITool> byName;
 
-    public ToolRegistry(List<Tool> tools) {
-        Map<String, Tool> map = new LinkedHashMap<>();
-        for (Tool tool : tools) {
+    public ToolRegistry(List<ITool> tools) {
+        Map<String, ITool> map = new LinkedHashMap<>();
+        for (ITool tool : tools) {
             map.put(tool.name(), tool);
         }
         this.byName = Map.copyOf(map);
@@ -30,7 +30,7 @@ public class ToolRegistry {
     }
 
     /** All registered tools (used to advertise schemas to the model). */
-    public Collection<Tool> all() {
+    public Collection<ITool> all() {
         return byName.values();
     }
 
@@ -40,7 +40,7 @@ public class ToolRegistry {
      * the whole request.
      */
     public ToolResult execute(String name, JsonNode input) {
-        Tool tool = byName.get(name);
+        ITool tool = byName.get(name);
         if (tool == null) {
             return ToolResult.error("Unknown tool '" + name + "'. Available tools: " + byName.keySet());
         }

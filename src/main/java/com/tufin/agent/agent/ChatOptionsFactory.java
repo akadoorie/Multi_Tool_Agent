@@ -1,7 +1,7 @@
 package com.tufin.agent.agent;
 
 import com.tufin.agent.config.AppProperties;
-import com.tufin.agent.tool.Tool;
+import com.tufin.agent.tool.ITool;
 import com.tufin.agent.tool.ToolRegistry;
 import java.util.Comparator;
 import java.util.List;
@@ -40,7 +40,7 @@ public class ChatOptionsFactory {
         // Stable (name-sorted) order so the cached tools prefix is byte-identical across requests;
         // tool registration order is otherwise undefined.
         this.toolCallbacks = registry.all().stream()
-                .sorted(Comparator.comparing(Tool::name))
+                .sorted(Comparator.comparing(ITool::name))
                 .map(SpringAiToolAdapter::new)
                 .map(ToolCallback.class::cast)
                 .toList();

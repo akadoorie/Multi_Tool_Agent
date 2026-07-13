@@ -11,7 +11,7 @@ import com.fasterxml.jackson.databind.JsonNode;
  * arguments, a city that doesn't exist, an upstream timeout) return {@link ToolResult#error} rather
  * than throwing, so the failure is fed back into the loop as data the agent can recover from.
  */
-public interface Tool {
+public interface ITool {
 
     /** Unique, stable tool id the model uses to call it (e.g. {@code "calculator"}). */
     String name();

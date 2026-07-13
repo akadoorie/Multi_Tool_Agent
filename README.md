@@ -46,7 +46,7 @@ How well it does it:
 - **Observability** — trace, latency, and tokens are first-class; `task_id` in the MDC (Mapped Diagnostic Context) correlates every log line.
 - **Reliability** — a tool failure never crashes a request; a max-iterations cap and per-tool HTTP timeouts bound every task.
 - **Determinism / low variance** — `temperature=0` and a bounded iteration count for predictable output.
-- **Extensibility (OCP — Open/Closed Principle)** — a new tool is one `@Component`; persistence sits behind a `TaskRepository` interface (DB-swappable).
+- **Extensibility (OCP — Open/Closed Principle)** — a new tool is one `@Component`; persistence sits behind an `ITaskRepository` interface (DB-swappable).
 - **Explainability & simplicity** — an explicit ~40-line loop and a file store, no framework/ORM (Object-Relational Mapping) magic.
 - **Security** — the API key is never committed (env-injected); tool output is treated as data, not instructions; the calculator uses a safe parser (no `eval`).
 - **Performance & cost** — prompt caching of the stable prefix, bounded conversation context, and an O(1) in-memory index.
@@ -60,10 +60,10 @@ How well it does it:
 `POST /task` enters `TaskController`, which delegates to `AgentService`. `AgentService` runs an
 **explicit reason→act→observe loop** (`AgentLoop`) against Claude, with Spring AI's *internal tool
 execution disabled* so our code owns every act/observe step — which is what makes the trace trivial to
-build. Tools implement a common `Tool` interface and self-register into a `ToolRegistry`. Every model
+build. Tools implement a common `ITool` interface and self-register into a `ToolRegistry`. Every model
 call and tool call is timed and its token usage captured. When Claude returns a plain-text turn (no
 tool calls), that is the final answer; `AgentService` persists the full `TaskRecord` through a
-file-backed `TaskRepository` and returns it. `GET /tasks/{id}` reads it back via an in-memory index.
+file-backed `ITaskRepository` and returns it. `GET /tasks/{id}` reads it back via an in-memory index.
 
 Two logging layers, kept separate on purpose:
 
@@ -342,7 +342,7 @@ summary**. Nothing on this endpoint calls the LLM.
 conversation (`app.conversation.context-turns`, default 10) — never the whole thing — and each prior
 turn contributes just its **task + final answer** (not the trace/tool steps). Those are appended
 **after** the cached system+tools prefix (so prompt caching is unaffected), then the new task. The
-lookup is a targeted `TaskRepository.findByConversation(id, limit)`, never a full-store scan.
+lookup is a targeted `ITaskRepository.findByConversation(id, limit)`, never a full-store scan.
 
 **Example** — turn 2 references turn 1:
 
@@ -368,12 +368,12 @@ that needs no tool ("write a haiku about that") still hits the no-tool backstop 
 
 ## 6. Design patterns & SOLID
 
-- **Strategy** — each tool is a `Tool` implementation; **Registry** — `ToolRegistry` resolves one by
-  name; **Repository** — persistence hides behind `TaskRepository`; **constructor DI (Dependency Injection)** throughout.
+- **Strategy** — each tool is an `ITool` implementation; **Registry** — `ToolRegistry` resolves one by
+  name; **Repository** — persistence hides behind `ITaskRepository`; **constructor DI (Dependency Injection)** throughout.
 - **SRP (Single Responsibility Principle):** controller (HTTP) / service (orchestration) / tool (capability) / repository (storage) each
   do one thing. **OCP:** adding a tool needs no change to the loop, registry, or controller. **LSP (Liskov Substitution Principle):**
-  tools are interchangeable behind `Tool`. **ISP (Interface Segregation Principle):** `Tool` and `TaskRepository` are small. **DIP (Dependency Inversion Principle):** the
-  service and loop depend on the `Tool` / `TaskRepository` abstractions, injected via the constructor.
+  tools are interchangeable behind `ITool`. **ISP (Interface Segregation Principle):** `ITool` and `ITaskRepository` are small. **DIP (Dependency Inversion Principle):** the
+  service and loop depend on the `ITool` / `ITaskRepository` abstractions, injected via the constructor.
 
 ### Model choice & the sampling flag
 
@@ -415,14 +415,14 @@ resolves from the environment and Docker Compose injects from `.env`.
 
 ## 8. How to add a new tool
 
-1. Create a class in `com.tufin.agent.tool` implementing `Tool` (`name`, `description`, `inputSchema`,
+1. Create a class in `com.tufin.agent.tool` implementing `ITool` (`name`, `description`, `inputSchema`,
    `execute`) and annotate it `@Component`.
 2. That's it. It auto-registers into `ToolRegistry`, is advertised to the model, and can be called
    immediately — no change to the loop, registry, service, or controller (Open/Closed Principle).
 
 ```java
 @Component
-public class CoinFlipTool implements Tool {
+public class CoinFlipTool implements ITool {
     public String name() { return "coin_flip"; }
     public String description() { return "Flip a fair coin. Input: {} (no arguments)."; }
     public String inputSchema() { return "{\"type\":\"object\",\"properties\":{}}"; }
@@ -484,7 +484,7 @@ type is registered with the JSON converter.
 ## 11. Trade-offs & limitations
 
 - **File store, not a database.** Simple and fully explainable (no ORM magic), and behind a
-  `TaskRepository` interface so a DB is a one-class change. The trade-off: no transactions, no rich
+  `ITaskRepository` interface so a DB is a one-class change. The trade-off: no transactions, no rich
   queries, and writes are serialised on a single lock — fine at this scale, not for high concurrency.
   On Linux, a bind-mounted `./data` may need write permissions for the container user (Docker Desktop
   handles this transparently).
@@ -494,7 +494,7 @@ type is registered with the JSON converter.
   limit)`, `countByConversation(id)`, `findConversationPage(id, page, size)` — each something a DB can
   serve from an index on `conversation_id` / `conversation_order`, and the file store keeps only a
   lightweight `conversation_id → task-ids` index (ids, not records). So a SQLite/Postgres
-  `TaskRepository` drops in where records and indexes live on disk and only the K needed turns are
+  `ITaskRepository` drops in where records and indexes live on disk and only the K needed turns are
   materialised — **no change to `AgentService` or `AgentLoop`.**
 - **No auth or rate limiting.** Out of scope for the exercise; both would sit in front of the
   controller in production.

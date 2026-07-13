@@ -23,7 +23,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
 /**
- * File-backed {@link TaskRepository}. The append-only JSON Lines file (one task per line) is the
+ * File-backed {@link ITaskRepository}. The append-only JSON Lines file (one task per line) is the
  * durable source of truth; an in-memory index (task id &rarr; record) is built from it at startup and
  * updated on every append, giving O(1) lookups without a database.
  *
@@ -37,7 +37,7 @@ import org.springframework.stereotype.Repository;
  * lock-free reads.
  */
 @Repository
-public class FileTaskRepository implements TaskRepository {
+public class FileTaskRepository implements ITaskRepository {
 
     private static final Logger log = LoggerFactory.getLogger(FileTaskRepository.class);
 

@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.tufin.agent.tool.CalculatorTool;
-import com.tufin.agent.tool.Tool;
+import com.tufin.agent.tool.ITool;
 import com.tufin.agent.tool.ToolRegistry;
 import com.tufin.agent.tool.ToolResult;
 import com.tufin.agent.tool.UnitConverterTool;
@@ -61,7 +61,7 @@ class SystemPromptFactoryTest {
     void generatesTheToolListFromTheRegistrySoANewToolNeedsNoPromptEdit() {
         // The Open/Closed win: registering another tool makes it appear in the prompt (name +
         // description) and bumps the count, with no change to SystemPromptFactory.
-        Tool translator = new Tool() {
+        ITool translator = new ITool() {
             @Override
             public String name() {
                 return "translator";

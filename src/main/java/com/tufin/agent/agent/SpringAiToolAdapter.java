@@ -1,11 +1,11 @@
 package com.tufin.agent.agent;
 
-import com.tufin.agent.tool.Tool;
+import com.tufin.agent.tool.ITool;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 
 /**
- * Adapts our {@link Tool} to a Spring AI {@link ToolCallback} for the sole purpose of advertising the
+ * Adapts our {@link ITool} to a Spring AI {@link ToolCallback} for the sole purpose of advertising the
  * tool's name, description, and input schema to Claude.
  *
  * <p>Because the agent loop runs with internal tool execution disabled, Spring AI never invokes
@@ -14,9 +14,9 @@ import org.springframework.ai.tool.definition.ToolDefinition;
  */
 public class SpringAiToolAdapter implements ToolCallback {
 
-    private final Tool tool;
+    private final ITool tool;
 
-    public SpringAiToolAdapter(Tool tool) {
+    public SpringAiToolAdapter(ITool tool) {
         this.tool = tool;
     }
 

@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
  * name to coordinates, then fetch current conditions for those coordinates.
  */
 @Component
-public class WeatherTool implements Tool {
+public class WeatherTool implements ITool {
 
     private final AppProperties props;
     private final HttpJsonClient http;

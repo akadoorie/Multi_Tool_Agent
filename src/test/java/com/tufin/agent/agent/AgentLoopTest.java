@@ -17,7 +17,7 @@ import com.tufin.agent.TestFixtures;
 import com.tufin.agent.exception.AgentExecutionException;
 import com.tufin.agent.model.TraceStep;
 import com.tufin.agent.tool.CalculatorTool;
-import com.tufin.agent.tool.Tool;
+import com.tufin.agent.tool.ITool;
 import com.tufin.agent.tool.ToolRegistry;
 import com.tufin.agent.tool.ToolResult;
 import com.tufin.agent.util.JsonSupport;
@@ -43,7 +43,7 @@ class AgentLoopTest {
     private final ChatModel chatModel = mock(ChatModel.class);
     private final ChatOptionsFactory optionsFactory = mock(ChatOptionsFactory.class);
     private final SystemPromptFactory promptFactory = mock(SystemPromptFactory.class);
-    private final ToolRegistry registry = new ToolRegistry(List.of((Tool) new CalculatorTool()));
+    private final ToolRegistry registry = new ToolRegistry(List.of((ITool) new CalculatorTool()));
     private final JsonSupport json = new JsonSupport(new ObjectMapper());
 
     @BeforeEach

@@ -22,7 +22,7 @@ import com.tufin.agent.exception.ConversationNotFoundException;
 import com.tufin.agent.model.ConversationSummary;
 import com.tufin.agent.model.TaskRecord;
 import com.tufin.agent.model.TaskRollup;
-import com.tufin.agent.repository.TaskRepository;
+import com.tufin.agent.repository.ITaskRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -36,7 +36,7 @@ import org.junit.jupiter.api.Test;
 class AgentServiceTest {
 
     private final AgentLoop loop = mock(AgentLoop.class);
-    private final TaskRepository repository = mock(TaskRepository.class);
+    private final ITaskRepository repository = mock(ITaskRepository.class);
     private final AgentService service =
             new AgentService(loop, repository, Clock.systemUTC(), TestFixtures.props(8));
 

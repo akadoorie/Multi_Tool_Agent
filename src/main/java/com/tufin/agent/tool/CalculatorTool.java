@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
  * here means math is computed deterministically instead of being guessed by the model.
  */
 @Component
-public class CalculatorTool implements Tool {
+public class CalculatorTool implements ITool {
 
     @Override
     public String name() {

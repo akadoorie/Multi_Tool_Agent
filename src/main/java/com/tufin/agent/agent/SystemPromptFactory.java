@@ -1,6 +1,6 @@
 package com.tufin.agent.agent;
 
-import com.tufin.agent.tool.Tool;
+import com.tufin.agent.tool.ITool;
 import com.tufin.agent.tool.ToolRegistry;
 import java.time.Clock;
 import java.time.ZonedDateTime;
@@ -42,8 +42,8 @@ public class SystemPromptFactory {
         String now = ZonedDateTime.now(clock).format(DateTimeFormatter.ISO_LOCAL_DATE);
 
         // Name-sorted so the generated prefix is byte-identical across requests (cache stability).
-        List<Tool> tools = registry.all().stream()
-                .sorted(Comparator.comparing(Tool::name))
+        List<ITool> tools = registry.all().stream()
+                .sorted(Comparator.comparing(ITool::name))
                 .toList();
         String catalog = tools.stream()
                 .map(tool -> "- `%s`: %s".formatted(tool.name(), tool.description()))

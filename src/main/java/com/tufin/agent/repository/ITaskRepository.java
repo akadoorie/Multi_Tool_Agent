@@ -13,7 +13,7 @@ import java.util.Optional;
  * could serve with an index on {@code conversation_id}/{@code conversation_order}, so a SQLite/Postgres
  * implementation materialises only the rows asked for, never the whole store.
  */
-public interface TaskRepository {
+public interface ITaskRepository {
 
     /**
      * Persists a completed task, assigning its {@code conversationOrder} as the next position in its

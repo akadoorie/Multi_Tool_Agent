@@ -8,7 +8,7 @@ import com.tufin.agent.dto.*;
 import com.tufin.agent.exception.ConversationNotFoundException;
 import com.tufin.agent.exception.TaskNotFoundException;
 import com.tufin.agent.model.TaskRecord;
-import com.tufin.agent.repository.TaskRepository;
+import com.tufin.agent.repository.ITaskRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -32,11 +32,11 @@ public class AgentService {
     private static final String MDC_TASK_ID = "task_id";
 
     private final AgentLoop loop;
-    private final TaskRepository repository;
+    private final ITaskRepository repository;
     private final Clock clock;
     private final AppProperties props;
 
-    public AgentService(AgentLoop loop, TaskRepository repository, Clock clock, AppProperties props) {
+    public AgentService(AgentLoop loop, ITaskRepository repository, Clock clock, AppProperties props) {
         this.loop = loop;
         this.repository = repository;
         this.clock = clock;
@@ -112,7 +112,7 @@ public class AgentService {
      * descending (tie-broken by {@code taskId} ascending) <em>before</em> slicing, because the
      * repository's in-memory index has no defined iteration order &mdash; paginating over that
      * directly would let pages overlap or drop records. The dataset is small and fully in-memory, so
-     * sorting here is cheap and keeps the {@link TaskRepository} interface minimal.
+     * sorting here is cheap and keeps the {@link ITaskRepository} interface minimal.
      *
      * @param page 0-based page index (validated {@code >= 0} at the controller).
      * @param size page size (validated {@code 1..100} at the controller).

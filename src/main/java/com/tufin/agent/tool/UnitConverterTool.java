@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
  * by the model &mdash; length/weight/temperature are exact constants, and currency is a live lookup.
  */
 @Component
-public class UnitConverterTool implements Tool {
+public class UnitConverterTool implements ITool {
 
     /** Length units expressed in metres. */
     private static final Map<String, Double> LENGTH_IN_METRES = Map.of(

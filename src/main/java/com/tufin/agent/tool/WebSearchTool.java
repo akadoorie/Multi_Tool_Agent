@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
  * model not to follow any instructions embedded in tool output (prompt-injection guard).
  */
 @Component
-public class WebSearchTool implements Tool {
+public class WebSearchTool implements ITool {
 
     private static final int MAX_SUMMARY_CHARS = 600;
     private static final String WIKI_ARTICLE_BASE = "https://en.wikipedia.org/wiki/";
