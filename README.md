@@ -135,7 +135,14 @@ Two caches, in different layers — nothing else is cached (tool calls and final
    - Health: <http://localhost:8080/health> → `{"status":"UP"}`
    - Swagger UI (the app's UI): <http://localhost:8080/swagger-ui.html> — how to drive every endpoint from it is §3.
 
-5. **Submit a task** — via the Swagger UI (§3), or curl:
+5. **Submit a task** — open the **Swagger UI** (<http://localhost:8080/swagger-ui.html>), expand
+   `POST /task`, click **"Try it out"**, set the request body to
+   `{"task":"What is 15% of 240, and what is the current weather in Tel Aviv?"}`, and click
+   **Execute** — the final answer, full trace, tokens, and latency render inline. To fetch it back,
+   expand `GET /tasks/{id}`, click **"Try it out"**, paste the `task_id` from that response, and
+   **Execute**.
+
+   As an alternative, the same two calls with curl:
    ```bash
    curl -s -X POST http://localhost:8080/task \
      -H "Content-Type: application/json" \
@@ -345,6 +352,14 @@ turn contributes just its **task + final answer** (not the trace/tool steps). Th
 lookup is a targeted `ITaskRepository.findByConversation(id, limit)`, never a full-store scan.
 
 **Example** — turn 2 references turn 1:
+
+In the **Swagger UI**, run `POST /task` (**"Try it out"** → body `{"task":"What is the current weather
+in Tel Aviv?"}` → **Execute**) and copy the `conversation_id` from the response. Then expand
+`POST /conversations/{conversation_id}/task`, click **"Try it out"**, paste that id into the
+`conversation_id` path field, set the body to `{"task":"Convert that temperature to Fahrenheit"}`, and
+**Execute** — the agent resolves *"that"* to turn 1's answer.
+
+As an alternative, the same two turns with curl:
 
 ```bash
 # turn 1 — new conversation
