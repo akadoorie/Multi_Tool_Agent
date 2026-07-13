@@ -6,6 +6,7 @@ import com.tufin.agent.util.HttpJsonClient;
 import java.util.Locale;
 import java.util.Map;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 
 /**
  * Converts between units of length, weight, and temperature using authoritative local factors, and
@@ -125,13 +126,26 @@ public class UnitConverterTool implements ITool {
         String f = from.toUpperCase(Locale.ROOT);
         String t = to.toUpperCase(Locale.ROOT);
         String template = props.tools().currency().url() + "/latest?amount={amount}&from={from}&to={to}";
-        JsonNode body = http.getJson(template, Map.of("amount", value, "from", f, "to", t));
+        JsonNode body;
+        try {
+            body = http.getJson(template, Map.of("amount", value, "from", f, "to", t));
+        } catch (HttpClientErrorException.NotFound e) {
+            // Frankfurter answers 404 for a currency it doesn't cover (e.g. AZN). That's an expected
+            // "unsupported code", not a crash, so we translate it into the same clear error as below
+            // rather than let it surface as an unexpected exception in the tool loop.
+            return unsupportedCurrencyPair(f, t);
+        }
         if (body == null || !body.has("rates") || !body.get("rates").hasNonNull(t)) {
-            return ToolResult.error("Could not fetch a live rate for " + f + "->" + t
-                    + " (are both valid ISO currency codes?).");
+            return unsupportedCurrencyPair(f, t);
         }
         double result = body.get("rates").get(t).asDouble();
         return ToolResult.ok(Map.of("value", value, "from", f, "to", t, "result", result,
                 "source", "frankfurter.app"));
+    }
+
+    private ToolResult unsupportedCurrencyPair(String from, String to) {
+        return ToolResult.error("No live rate available for " + from + "->" + to
+                + ". One or both are not currency codes the rate provider supports (Frankfurter covers"
+                + " major ISO currencies such as USD, EUR, GBP, ILS, JPY, but not every currency).");
     }
 }

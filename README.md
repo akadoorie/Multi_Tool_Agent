@@ -470,11 +470,12 @@ type is registered with the JSON converter.
 ./mvnw test        # or: mvn test
 ```
 
-59 deterministic tests, none of which call the live LLM:
+60 deterministic tests, none of which call the live LLM:
 
 - **Tool unit tests** — calculator (precedence, invalid expr, non-finite, div-by-zero), unit
-  conversions (°C→°F, km→m), currency via a stubbed rate, and the web-search DDG→Wikipedia fallback
-  (including when DuckDuckGo errors).
+  conversions (°C→°F, km→m), currency via a stubbed rate (and an unsupported currency, where the
+  provider's `404` becomes a clean error instead of a propagated exception), and the web-search
+  DDG→Wikipedia fallback (including when DuckDuckGo errors).
 - **Agent-loop tests** (mocked `ChatModel`) — tool dispatch + trace shape, the scope gate (a task that
   invokes no tool returns `Unsupported`), tool-error recovery, the max-iterations guard,
   once-per-iteration token summing, and aggregating a tool call split across multiple `Generation`s.

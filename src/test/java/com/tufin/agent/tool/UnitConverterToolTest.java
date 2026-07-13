@@ -14,6 +14,9 @@ import com.tufin.agent.util.HttpJsonClient;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.client.HttpClientErrorException;
 
 class UnitConverterToolTest {
 
@@ -56,6 +59,20 @@ class UnitConverterToolTest {
 
         assertThat(result.ok()).isTrue();
         assertThat(resultValue(result)).isEqualTo(9.2, within(1e-9));
+    }
+
+    @Test
+    void unsupportedCurrencyYieldsCleanErrorInsteadOfPropagatingHttp404() {
+        // Frankfurter returns 404 for a currency it doesn't cover (e.g. AZN). The tool must translate
+        // that into a ToolResult.error, not let the exception escape to the tool loop.
+        when(http.getJson(anyString(), anyMap())).thenThrow(HttpClientErrorException.create(
+                HttpStatus.NOT_FOUND, "Not Found", HttpHeaders.EMPTY,
+                "{\"message\":\"not found\"}".getBytes(), null));
+
+        ToolResult result = tool.execute(input("currency", 100, "ILS", "AZN"));
+
+        assertThat(result.ok()).isFalse();
+        assertThat(result.error()).contains("ILS->AZN");
     }
 
     private double resultValue(ToolResult result) {
