@@ -517,3 +517,9 @@ type is registered with the JSON converter.
   bounded iteration count keep this predictable, but not free or instant.
 - **Future work:** a DB implementation, auth + rate limiting, streaming, multi-turn conversations,
   distributed tracing (Micrometer/OpenTelemetry), and an optional second-pass grounding/verifier check.
+
+---
+
+## 12. License
+
+Released under the **[MIT License](https://opensource.org/license/mit)**.
