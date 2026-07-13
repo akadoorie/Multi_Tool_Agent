@@ -455,7 +455,7 @@ type is registered with the JSON converter.
 ./mvnw test        # or: mvn test
 ```
 
-33 deterministic tests, none of which call the live LLM:
+59 deterministic tests, none of which call the live LLM:
 
 - **Tool unit tests** — calculator (precedence, invalid expr, non-finite, div-by-zero), unit
   conversions (°C→°F, km→m), currency via a stubbed rate, and the web-search DDG→Wikipedia fallback
@@ -463,9 +463,9 @@ type is registered with the JSON converter.
 - **Agent-loop tests** (mocked `ChatModel`) — tool dispatch + trace shape, the scope gate (a task that
   invokes no tool returns `Unsupported`), tool-error recovery, the max-iterations guard,
   once-per-iteration token summing, and aggregating a tool call split across multiple `Generation`s.
-- **System-prompt test** — the built prompt injects the current date (fixed `Clock`), the four tool
-  rules, the out-of-scope → `Unsupported` scope rule, and the internal-only-timestamp rule (so bare
-  date/time questions are out of scope).
+- **System-prompt test** — the built prompt injects the current date (fixed `Clock`), the tool list
+  generated from the registry, the out-of-scope → `Unsupported` scope rule, and the internal-only-
+  timestamp rule (so bare date/time questions are out of scope).
 - **Service test** — `GET /tasks` paging: newest-first ordering (`createdAt` desc, `taskId` tie-break)
   over unordered repo data, slicing, the last partial page, out-of-range, and empty store.
 - **Controller tests** (MockMvc) — `POST /task`, `GET /tasks/{id}` round-trip + 404, `GET /tasks`
