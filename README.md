@@ -144,12 +144,12 @@ Two caches, in different layers — nothing else is cached (tool calls and final
 
    As an alternative, the same two calls with curl:
    ```bash
+   # submit the task
    curl -s -X POST http://localhost:8080/task \
      -H "Content-Type: application/json" \
      -d '{"task":"What is 15% of 240, and what is the current weather in Tel Aviv?"}'
-   ```
-   Then fetch it back:
-   ```bash
+
+   # then fetch it back by the returned task_id
    curl -s http://localhost:8080/tasks/<task_id>
    ```
 
