@@ -11,11 +11,11 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.tufin</groupId>
+    <groupId>com.multitoolagent</groupId>
     <artifactId>agent</artifactId>
     <version>1.0.0</version>
     <name>multi-tool-agent</name>
-    <description>Multi-Tool Agent REST API with observability</description>
+    <description>Multi-Tool Agent REST API</description>
 
     <properties>
         <java.version>21</java.version>

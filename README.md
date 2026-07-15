@@ -1,4 +1,4 @@
-# Multi-Tool Agent with Observability
+# Multi-Tool Agent
 
 A Spring Boot REST API that accepts a natural-language task, runs an LLM agent (Claude, via Spring AI)
 that reasons step-by-step and calls **real tools** to solve it, and returns a final answer plus a
@@ -159,11 +159,11 @@ Two caches, in different layers — nothing else is cached (tool calls and final
   usage from the agent loop.
   ```bash
   # .env
-  LOGGING_LEVEL_COM_TUFIN_AGENT=DEBUG        # TRACE | DEBUG | INFO | WARN | ERROR
+  LOGGING_LEVEL_COM_MULTITOOLAGENT_AGENT=DEBUG        # TRACE | DEBUG | INFO | WARN | ERROR
   ```
   The same variable works for any logger — e.g. `LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_WEB=DEBUG` for HTTP
   request logging. (Running locally without Docker? Prefix the run instead:
-  `LOGGING_LEVEL_COM_TUFIN_AGENT=DEBUG ./mvnw spring-boot:run`.)
+  `LOGGING_LEVEL_COM_MULTITOOLAGENT_AGENT=DEBUG ./mvnw spring-boot:run`.)
 - **Data** lives in `./data/tasks.jsonl` on the host (mounted volume), so it survives restarts.
 - **Stop:** `Ctrl-C`, then `docker compose down`.
 
@@ -421,7 +421,7 @@ All tunables live in `src/main/resources/application.yml`, bound to the typed `A
 | `app.persistence.data-file`  | `./data/tasks.jsonl`                                 | Task store path (mounted volume in Docker).    |
 | `app.pagination.default-size`| `20`                                                 | `GET /tasks` page size when `size` is omitted.  |
 | `app.pagination.max-size`    | `100`                                                | Largest `size` a caller may request (else 400). |
-| `logging.level.com.tufin.agent` | `INFO`                                            | App log verbosity. Override via env `LOGGING_LEVEL_COM_TUFIN_AGENT` (e.g. a line in `.env`); `DEBUG` shows per-call token/cache usage. |
+| `logging.level.com.multitoolagent.agent` | `INFO`                                            | App log verbosity. Override via env `LOGGING_LEVEL_COM_MULTITOOLAGENT_AGENT` (e.g. a line in `.env`); `DEBUG` shows per-call token/cache usage. |
 
 The API key is **never** in config; `application.yml` references `${ANTHROPIC_API_KEY}`, which Spring
 resolves from the environment and Docker Compose injects from `.env`.
@@ -430,7 +430,7 @@ resolves from the environment and Docker Compose injects from `.env`.
 
 ## 8. How to add a new tool
 
-1. Create a class in `com.tufin.agent.tool` implementing `ITool` (`name`, `description`, `inputSchema`,
+1. Create a class in `com.multitoolagent.agent.tool` implementing `ITool` (`name`, `description`, `inputSchema`,
    `execute`) and annotate it `@Component`.
 2. That's it. It auto-registers into `ToolRegistry`, is advertised to the model, and can be called
    immediately — no change to the loop, registry, service, or controller (Open/Closed Principle).

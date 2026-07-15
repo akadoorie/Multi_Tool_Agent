@@ -45,4 +45,4 @@ app:
 
 logging:
   level:
-    com.tufin.agent: INFO
+    com.multitoolagent.agent: INFO
