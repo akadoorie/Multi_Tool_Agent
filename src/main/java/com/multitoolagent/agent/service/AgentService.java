@@ -64,17 +64,18 @@ public class AgentService {
         String taskId = UUID.randomUUID().toString();
         MDC.put(MDC_TASK_ID, taskId);
         try {
-            log.info("Starting task in conversation {}: {}", conversation.id(), task);
+            log.info("Starting task in conversation {}: [\"{}\"]", conversation.id(), task);
             LoopResult result = loop.run(task, conversation.history());
             // conversationOrder is a placeholder here — the repository assigns the real one under its
             // write lock (atomically with the append) and returns the stored record.
             TaskRecord record = new TaskRecord(taskId, task, result.finalAnswer(), result.trace(),
                     result.rollup(), Instant.now(clock), conversation.id(), 0);
             TaskRecord stored = repository.save(record);
-            log.info("Stored task {} (conversation {} turn {}; {} input / {} output tokens, {} ms)",
+            log.info("Stored task {} (conversation {} turn {}; {} input / {} output tokens, {} ms); "
+                            + "final answer: [\"{}\"]",
                     taskId, stored.conversationId(), stored.conversationOrder(),
                     result.rollup().totalInputTokens(), result.rollup().totalOutputTokens(),
-                    result.rollup().totalLatencyMs());
+                    result.rollup().totalLatencyMs(), result.finalAnswer());
             return DtoMapper.toDto(stored);
         } finally {
             MDC.remove(MDC_TASK_ID);
