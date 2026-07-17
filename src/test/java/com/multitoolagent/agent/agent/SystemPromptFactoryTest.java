@@ -157,6 +157,16 @@ class SystemPromptFactoryTest {
     }
 
     @Test
+    void wrapsTheFinalAnswerAsAReasoningPlusAnswerJsonObject() {
+        String prompt = factory.build();
+
+        // The final answer is a JSON envelope so the value (answer) is separable from any explanation
+        // (reasoning) — the caveat must never be baked into the answer text.
+        assertThat(prompt).contains("JSON object");
+        assertThat(prompt).contains("two string fields");
+    }
+
+    @Test
     void allowsReusingEarlierToolResultsByRecallingTheTool() {
         String prompt = factory.build();
 

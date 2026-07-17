@@ -27,7 +27,8 @@ public final class DtoMapper {
 
     /**
      * Maps a task to the lightweight {@link ConversationTurnDto} used by {@code GET /conversations}:
-     * task + answer + the tools it used, but not the full trace (fetch that via {@code GET /tasks/id}).
+     * task + answer + the explanation behind it + the tools it used, but not the full step-by-step
+     * trace (fetch that via {@code GET /tasks/id}).
      */
     public static ConversationTurnDto toConversationTurn(TaskRecord record) {
         return new ConversationTurnDto(
@@ -35,6 +36,7 @@ public final class DtoMapper {
                 record.taskId(),
                 record.task(),
                 record.finalAnswer(),
+                reasoning(record),
                 toolsUsed(record),
                 record.createdAt());
     }
@@ -64,6 +66,19 @@ public final class DtoMapper {
                 .filter(step -> "final_answer".equals(step.type()))
                 .map(TraceStep::toolsUsed)
                 .filter(tools -> tools != null)
+                .findFirst()
+                .orElse(null);
+    }
+
+    /**
+     * The explanation behind the answer: the thought on the turn's {@code reasoning} step, or null when
+     * there is none. A turn has at most one such step &mdash; either the final-answer caveat split or an
+     * {@code Unsupported} verdict's reason, which are mutually exclusive.
+     */
+    private static String reasoning(TaskRecord record) {
+        return record.trace().stream()
+                .filter(step -> "reasoning".equals(step.type()))
+                .map(TraceStep::thought)
                 .findFirst()
                 .orElse(null);
     }

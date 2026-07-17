@@ -40,7 +40,8 @@ class ConversationControllerTest {
 
     @Test
     void returnsPagedTurnsWithDefaultSizeFromConfig() throws Exception {
-        ConversationTurnDto turn = new ConversationTurnDto(0, "t0", "q0", "a0", List.of("weather"),
+        ConversationTurnDto turn = new ConversationTurnDto(0, "t0", "q0", "a0",
+                "the tool did not return the value, so used an earlier result", List.of("weather"),
                 Instant.parse("2026-07-01T10:00:00Z"));
         when(service.getConversation("c1", 0, 7))
                 .thenReturn(new PagedConversationResponse(List.of(turn), 0, 7, 1, 1));
@@ -50,6 +51,8 @@ class ConversationControllerTest {
                 .andExpect(jsonPath("$.total_elements").value(1))
                 .andExpect(jsonPath("$.items[0].conversation_order").value(0))
                 .andExpect(jsonPath("$.items[0].task").value("q0"))
+                .andExpect(jsonPath("$.items[0].reasoning")
+                        .value("the tool did not return the value, so used an earlier result"))
                 .andExpect(jsonPath("$.items[0].tools_used[0]").value("weather"));
     }
 

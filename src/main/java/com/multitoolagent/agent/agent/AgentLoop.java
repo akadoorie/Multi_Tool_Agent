@@ -151,8 +151,23 @@ public class AgentLoop {
                 boolean anyToolUsed = !toolsUsed.isEmpty();
                 String finalAnswer;
                 if (anyToolUsed) {
-                    finalAnswer = assistantText;
-                    trace.add(TraceStep.finalAnswer(++stepIndex, iteration, toolsUsed, finalAnswer, modelLatencyMs, usage));
+                    // The model returns its final turn as {"reasoning","answer"} (rule 6). Split so the
+                    // stored answer is the value alone and any explanation lives in its own step. A
+                    // plain-text turn (no such JSON) falls back to being the answer verbatim.
+                    JsonNode envelope = finalAnswerEnvelope(assistantText);
+                    finalAnswer = envelope != null ? envelope.get("answer").asText() : assistantText;
+                    String reasoning = envelope != null && envelope.hasNonNull("reasoning")
+                            ? envelope.get("reasoning").asText() : "";
+                    if (!reasoning.isBlank()) {
+                        // One model turn, split for presentation (mirrors the Unsupported path): the
+                        // reasoning step carries this turn's latency + tokens; the final_answer step
+                        // carries 0/null so the rollup is not double-counted.
+                        trace.add(TraceStep.reasoning(++stepIndex, iteration, reasoning, modelLatencyMs, usage));
+                        trace.add(TraceStep.finalAnswer(++stepIndex, iteration, toolsUsed, finalAnswer, 0, null));
+                        log.info("Final-answer reasoning: [\"{}\"]", oneLine(reasoning));
+                    } else {
+                        trace.add(TraceStep.finalAnswer(++stepIndex, iteration, toolsUsed, finalAnswer, modelLatencyMs, usage));
+                    }
                     log.info("Task completed in {} iteration(s) using tools {}.", iteration, toolsUsed);
                 } else if (assistantText != null && !assistantText.isBlank()) {
                     // Out of scope, but the model explained why. Keep that explanation as a `reasoning`
@@ -240,6 +255,33 @@ public class AgentLoop {
 
     private static int nullToZero(Integer value) {
         return value == null ? 0 : value;
+    }
+
+    /**
+     * Pulls the final-answer envelope ({@code {"reasoning","answer"}}, rule 6) out of the model's
+     * terminating turn. The model usually returns just that object, but sometimes wraps it in a prose
+     * preamble or code fences; this recognises both — first trying the whole text, then the first
+     * {@code {…}} object embedded in it. Returns null when there is no such object (a plain-text
+     * answer), so the caller uses the raw text unchanged. Requiring an {@code "answer"} field keeps a
+     * bare value like {@code 36} (a JSON number, not an object) or unrelated braces on the raw path.
+     */
+    private JsonNode finalAnswerEnvelope(String assistantText) {
+        if (assistantText == null) {
+            return null;
+        }
+        JsonNode whole = json.parseOrEmpty(assistantText);
+        if (whole.isObject() && whole.hasNonNull("answer")) {
+            return whole;
+        }
+        int start = assistantText.indexOf('{');
+        int end = assistantText.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+            JsonNode embedded = json.parseOrEmpty(assistantText.substring(start, end + 1));
+            if (embedded.isObject() && embedded.hasNonNull("answer")) {
+                return embedded;
+            }
+        }
+        return null;
     }
 
     /** Reads token usage defensively &mdash; some responses may carry no usage metadata. */

@@ -79,6 +79,70 @@ class AgentLoopTest {
     }
 
     @Test
+    void splitsReasoningFromValueWhenFinalTurnIsStructuredJson() {
+        // The model returns its final turn as {"reasoning","answer"} (rule 6). The loop stores the
+        // value alone as the answer and lifts the explanation into its own reasoning step.
+        when(chatModel.call(any(Prompt.class))).thenReturn(
+                toolTurn("Calculating.", 10, 5, call("calculator", "{\"expression\":\"12 * 3\"}")),
+                textTurn("{\"reasoning\":\"reused an earlier confirmed result\",\"answer\":\"36\"}", 20, 7));
+
+        LoopResult result = loop(8).run("what is 12 * 3");
+
+        assertThat(result.finalAnswer()).isEqualTo("36");
+        assertThat(result.trace()).extracting(TraceStep::type)
+                .containsExactly("model_call", "tool", "reasoning", "final_answer");
+
+        TraceStep reasoning = result.trace().get(2);
+        assertThat(reasoning.thought()).isEqualTo("reused an earlier confirmed result");
+        assertThat(reasoning.tokens().inputTokens()).isEqualTo(20);   // this turn's tokens live on the reasoning step
+
+        TraceStep finalStep = result.trace().get(3);
+        assertThat(finalStep.thought()).isEqualTo("36");
+        assertThat(finalStep.toolsUsed()).containsExactly("calculator");
+        assertThat(finalStep.latencyMs()).isZero();      // value step carries 0/null so tokens aren't double-counted
+        assertThat(finalStep.tokens()).isNull();
+    }
+
+    @Test
+    void extractsTheEnvelopeEvenWhenTheModelWrapsItInProse() {
+        // The model sometimes disobeys "raw JSON only" and adds a prose preamble before the object.
+        // The value must still be pulled from the embedded envelope, not stored as the whole blob.
+        String wrapped = "The web search did not return the digits. However, this value was established "
+                + "earlier in our conversation:\n\n"
+                + "{\"reasoning\":\"established earlier in this conversation\",\"answer\":\"3.14159\"}";
+        when(chatModel.call(any(Prompt.class))).thenReturn(
+                toolTurn("Searching.", 10, 5, call("calculator", "{\"expression\":\"1\"}")),
+                textTurn(wrapped, 20, 7));
+
+        LoopResult result = loop(8).run("first digits of pi");
+
+        assertThat(result.finalAnswer()).isEqualTo("3.14159");
+        assertThat(result.trace()).extracting(TraceStep::type)
+                .containsExactly("model_call", "tool", "reasoning", "final_answer");
+        assertThat(result.trace().get(2).thought()).isEqualTo("established earlier in this conversation");
+        assertThat(result.trace().get(3).thought()).isEqualTo("3.14159");
+    }
+
+    @Test
+    void treatsAPlainTextFinalTurnAsTheAnswer() {
+        // A final turn that is not the rule-6 JSON envelope is used verbatim as the answer, with no
+        // reasoning step — preserving the pre-envelope behaviour (a bare "36" is a JSON number, not an
+        // object, so it still takes this fallback).
+        when(chatModel.call(any(Prompt.class))).thenReturn(
+                toolTurn("Calculating.", 10, 5, call("calculator", "{\"expression\":\"6 * 6\"}")),
+                textTurn("36", 20, 7));
+
+        LoopResult result = loop(8).run("what is 6 * 6");
+
+        assertThat(result.finalAnswer()).isEqualTo("36");
+        assertThat(result.trace()).extracting(TraceStep::type)
+                .containsExactly("model_call", "tool", "final_answer");
+        TraceStep finalStep = result.trace().get(2);
+        assertThat(finalStep.thought()).isEqualTo("36");
+        assertThat(finalStep.tokens()).isNotNull();     // fallback keeps tokens/latency on the final_answer step
+    }
+
+    @Test
     void aggregatesToolCallsSplitAcrossGenerations() {
         // Reproduces the real Spring AI Anthropic behaviour: one tool_use turn arrives split across
         // two Generations (an empty leading one, then the tool call). The loop must still dispatch it.
