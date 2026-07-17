@@ -149,5 +149,10 @@ class SystemPromptFactoryTest {
         assertThat(prompt).contains("Plain text ONLY", "No emojis");
         // Provenance lives in the trace (the final step's tools_used), not in the answer text.
         assertThat(prompt).contains("Do NOT name the tools");
+        // A clear single-answer question must yield the value alone — no echoed question, no
+        // trailing period (e.g. "What is 15% of 240?" -> 36, not "15% of 240 is 36.").
+        assertThat(prompt).contains("value ALONE");
+        assertThat(prompt).contains("15% of 240 is 36");
+        assertThat(prompt).contains("trailing punctuation");
     }
 }
