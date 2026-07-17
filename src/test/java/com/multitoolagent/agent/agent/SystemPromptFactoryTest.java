@@ -154,6 +154,8 @@ class SystemPromptFactoryTest {
         assertThat(prompt).contains("value ALONE");
         assertThat(prompt).contains("15% of 240 is 36");
         assertThat(prompt).contains("trailing punctuation");
+        // A conversion gives the value with its unit, not a restatement of the input.
+        assertThat(prompt).contains("100 USD = 304.70 ILS");
     }
 
     @Test

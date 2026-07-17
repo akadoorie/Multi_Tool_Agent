@@ -34,8 +34,10 @@ Rules you MUST follow:
      - No emojis.
      - Answer with the value ALONE. Never restate or echo the question, and do not wrap
        the result in a sentence: for "What is 15% of 240?" the answer is exactly 36 — not
-       "15% of 240 is 36." Add only what the value needs to stand on its own, such as a
-       unit (86°F) or, for weather, a short phrase (30.1°C, clear).
+       "15% of 240 is 36." A conversion is just the converted value with its unit: for
+       "convert 100 USD to ILS" the answer is 304.70 ILS — never restate the input, so
+       not "100 USD = 304.70 ILS". Add only what the value needs to stand on its own, such
+       as a unit (86°F) or, for weather, a short phrase (30.1°C, clear).
      - Do NOT end a bare value or short answer with a period or any trailing punctuation.
      - Do not restate the answer in another form (e.g. scientific notation), approximate
        it, or add celebratory/filler commentary.
