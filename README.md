@@ -127,15 +127,16 @@ Two caches, in different layers — nothing else is cached (tool calls and final
    cp .env.example .env
    # edit .env and paste your key into ANTHROPIC_API_KEY
    ```
-3. **Build & run:**
+3. **Start Docker** — make sure the Docker daemon is running (e.g. on Windows/macOS, open **Docker Desktop** and wait for it to report *Engine running*).
+4. **Build & run:**
    ```bash
    docker compose up --build
    ```
-4. **Verify:**
+5. **Verify:**
    - Health: <http://localhost:8080/health> → `{"status":"UP"}`
    - Swagger UI (the app's UI): <http://localhost:8080/swagger-ui.html> — how to drive every endpoint from it is §3.
 
-5. **Submit a task** — open the **Swagger UI** (<http://localhost:8080/swagger-ui.html>), expand
+6. **Submit a task** — open the **Swagger UI** (<http://localhost:8080/swagger-ui.html>), expand
    `POST /task`, click **"Try it out"**, set the request body to
    `{"task":"What is 15% of 240, and what is the current weather in Tel Aviv?"}`, and click
    **Execute** — the final answer, full trace, tokens, and latency render inline. To fetch it back,
