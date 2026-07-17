@@ -17,7 +17,8 @@ public final class TestFixtures {
     /** As {@link #props(int)} but with caller-supplied paging limits (to exercise config-driven paging). */
     public static AppProperties props(int maxIterations, AppProperties.Pagination pagination) {
         return new AppProperties(
-                new AppProperties.Agent("claude-sonnet-4-6", maxIterations, 8192, 0.0, true),
+                new AppProperties.Agent("claude-sonnet-4-6", maxIterations, 8192, 0.0, true,
+                        "classpath:prompts/system-prompt.txt"),
                 new AppProperties.Http(Duration.ofSeconds(3), Duration.ofSeconds(10)),
                 new AppProperties.Tools(
                         new AppProperties.Tools.Weather(

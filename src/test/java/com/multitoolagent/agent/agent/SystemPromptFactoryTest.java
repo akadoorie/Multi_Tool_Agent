@@ -10,11 +10,15 @@ import com.multitoolagent.agent.tool.ToolResult;
 import com.multitoolagent.agent.tool.UnitConverterTool;
 import com.multitoolagent.agent.tool.WeatherTool;
 import com.multitoolagent.agent.tool.WebSearchTool;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.ClassPathResource;
 
 /**
  * Verifies the system prompt carries the instructions the whole design leans on: tool-first rules,
@@ -24,8 +28,14 @@ import org.junit.jupiter.api.Test;
  * <p>The tool list is generated from the {@link ToolRegistry}, so the factory is built from a real
  * registry of the real tools. Their constructors only store dependencies (never dereferenced by
  * {@code name()}/{@code description()}), so {@code null} deps are safe here.
+ *
+ * <p>The policy prose lives in the external template shipped at {@code classpath:prompts/system-prompt.txt}
+ * (see {@code PromptConfig}); these tests load that real file, so they also guard that the shipped
+ * prompt still carries the required rules &mdash; an edit that drops them fails the build.
  */
 class SystemPromptFactoryTest {
+
+    private static final String TEMPLATE = loadTemplate();
 
     private final Clock fixedClock = Clock.fixed(Instant.parse("2026-07-01T12:00:00Z"), ZoneOffset.UTC);
     private final ToolRegistry registry = new ToolRegistry(List.of(
@@ -33,7 +43,16 @@ class SystemPromptFactoryTest {
             new WeatherTool(null, null),
             new WebSearchTool(null, null),
             new UnitConverterTool(null, null)));
-    private final SystemPromptFactory factory = new SystemPromptFactory(fixedClock, registry);
+    private final SystemPromptFactory factory = new SystemPromptFactory(fixedClock, registry, TEMPLATE);
+
+    private static String loadTemplate() {
+        try {
+            return new ClassPathResource("prompts/system-prompt.txt")
+                    .getContentAsString(StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Could not load the system-prompt template for the test", e);
+        }
+    }
 
     @Test
     void declaresUnsupportedForTasksOutsideTheToolsScope() {
@@ -89,7 +108,7 @@ class SystemPromptFactoryTest {
                 new UnitConverterTool(null, null),
                 translator));
 
-        String prompt = new SystemPromptFactory(fixedClock, withExtra).build();
+        String prompt = new SystemPromptFactory(fixedClock, withExtra, TEMPLATE).build();
 
         assertThat(prompt).contains("5 tools");
         assertThat(prompt).contains("`translator`: Translate text between languages.");

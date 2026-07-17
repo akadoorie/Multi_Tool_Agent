@@ -15,20 +15,26 @@ public record AppProperties(Agent agent, Http http, Tools tools, Persistence per
     /**
      * Agent / LLM settings.
      *
-     * @param model              Claude model id (e.g. {@code claude-sonnet-4-6}).
-     * @param maxIterations      hard cap on reason&rarr;act&rarr;observe cycles.
-     * @param maxTokens          per-response output-token ceiling.
-     * @param temperature        sampling temperature (only sent when {@code sendSamplingParams}).
-     * @param sendSamplingParams whether to send sampling params. Sonnet 4.6 accepts {@code temperature};
-     *                           Opus 4.8/4.7 reject {@code temperature}/{@code top_p}/{@code top_k}
-     *                           with HTTP 400, so switch this off for those models.
+     * @param model                Claude model id (e.g. {@code claude-sonnet-4-6}).
+     * @param maxIterations        hard cap on reason&rarr;act&rarr;observe cycles.
+     * @param maxTokens            per-response output-token ceiling.
+     * @param temperature          sampling temperature (only sent when {@code sendSamplingParams}).
+     * @param sendSamplingParams   whether to send sampling params. Sonnet 4.6 accepts {@code temperature};
+     *                             Opus 4.8/4.7 reject {@code temperature}/{@code top_p}/{@code top_k}
+     *                             with HTTP 400, so switch this off for those models.
+     * @param systemPromptLocation Spring resource location of the system-prompt template
+     *                             ({@code classpath:…} or {@code file:…}). Read once at startup by
+     *                             {@code PromptConfig}; the {@code {{tool_count}}}/{@code {{tool_catalog}}}/
+     *                             {@code {{current_date}}} placeholders are filled in per request by
+     *                             {@code SystemPromptFactory}.
      */
     public record Agent(
             String model,
             int maxIterations,
             int maxTokens,
             double temperature,
-            boolean sendSamplingParams) {
+            boolean sendSamplingParams,
+            String systemPromptLocation) {
     }
 
     /** Shared HTTP client timeouts, applied to every outbound tool call. */

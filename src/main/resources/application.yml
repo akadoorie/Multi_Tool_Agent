@@ -20,6 +20,10 @@ app:
     temperature: 0.0
     # Sonnet 4.6 accepts sampling params; set false for Opus 4.8/4.7 (they reject temperature with 400).
     send-sampling-params: true
+    # Location of the system-prompt template (Spring resource location: classpath:… or file:…).
+    # Loaded once at startup; {{tool_count}}/{{tool_catalog}}/{{current_date}} are filled in per request.
+    # Override to an external file (e.g. file:./config/system-prompt.txt) to change the prompt without a rebuild.
+    system-prompt-location: classpath:prompts/system-prompt.txt
   http:
     connect-timeout: 3s
     read-timeout: 10s

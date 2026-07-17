@@ -32,7 +32,8 @@ class FileTaskRepositoryTest {
 
     private AppProperties propsFor(Path file) {
         return new AppProperties(
-                new AppProperties.Agent("claude-sonnet-4-6", 8, 8192, 0.0, true),
+                new AppProperties.Agent("claude-sonnet-4-6", 8, 8192, 0.0, true,
+                        "classpath:prompts/system-prompt.txt"),
                 null, null,
                 new AppProperties.Persistence(file.toString()),
                 null, null);
