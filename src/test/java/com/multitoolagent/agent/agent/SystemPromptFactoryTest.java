@@ -155,4 +155,15 @@ class SystemPromptFactoryTest {
         assertThat(prompt).contains("15% of 240 is 36");
         assertThat(prompt).contains("trailing punctuation");
     }
+
+    @Test
+    void allowsReusingEarlierToolResultsByRecallingTheTool() {
+        String prompt = factory.build();
+
+        // A follow-up that repeats/reuses a value a tool produced earlier is NOT a "from memory"
+        // refusal: the model reproduces it by calling the tool again, so the answer stays grounded.
+        assertThat(prompt).contains("Reusing earlier results");
+        assertThat(prompt).contains("calling the appropriate tool again");
+        assertThat(prompt).contains("may differ from the earlier one");
+    }
 }
