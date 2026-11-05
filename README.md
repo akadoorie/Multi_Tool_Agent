@@ -70,6 +70,20 @@ calls, the loop ends: that turn's `{reasoning, answer}` JSON is split into the f
 optional `reasoning` step (§4, "System prompt & rules"); `AgentService` persists the full `TaskRecord` through a
 file-backed `ITaskRepository` and returns it. `GET /tasks/{id}` reads it back via an in-memory index.
 
+**The agent harness.** The *harness* is all the code around the model: it decides nothing itself, but
+it runs every step and enforces every rule. Here it has four parts:
+
+| Part | Role |
+|------|------|
+| `AgentLoop` | The reason→act→observe loop: the scope gate, the `{reasoning, answer}` split, the iteration cap, the trace and the token rollup. |
+| `ToolRegistry` | Runs the real tools the model asks for, by name. |
+| `SystemPromptFactory` + `prompts/system-prompt.txt` | Builds the system prompt: the tool catalog and the 8 rules. |
+| `ILlmClient` | Makes one model call — one implementation per engine (Spring AI, LangChain4j). |
+
+The model only *chooses* (which tool, which inputs, which words); the harness does everything else —
+grounding, scope, answer format, limits and the trace. Because the harness is written once and only the
+`ILlmClient` differs, switching engines doesn't change the agent's behaviour.
+
 Two logging layers, kept separate on purpose:
 
 1. **The structured task store** (`tasks.jsonl`) — the persistent, queryable observability artifact.
@@ -291,7 +305,8 @@ answer, so a format slip never loses it. Tokens and latency for that turn are co
 `ILlmClient` has one job: *send this conversation to the model once and tell me what came back*
 (`ModelTurn` = text, requested tool calls, token and cache counts). Everything that defines the agent —
 the loop, the scope gate, the `{reasoning, answer}` split, the trace and the token rollup — lives once in
-`AgentLoop`, so both engines behave identically. Each adapter only translates our own neutral message
+`AgentLoop`, so both engines behave identically: the harness (§1) is written once, and only the model
+call differs per engine. Each adapter only translates our own neutral message
 types (`AgentMessage`) to and from its framework's types:
 
 | | Spring AI (`SpringAiLlmClient`) | LangChain4j (`LangChain4jLlmClient`) |
@@ -581,10 +596,12 @@ type is registered with the JSON converter.
 - **Agent-loop tests — run once per engine.** The scenarios live once in the abstract `AgentLoopTest`
   (tool dispatch + trace shape, tool-result id pairing, the scope gate, the `{reasoning, answer}` split,
   tool-error recovery, the max-iterations guard, token and cache summing). `SpringAiAgentLoopTest` and
-  `LangChain4jAgentLoopTest` each plug in their *real* adapter over a mocked framework model, so JUnit
+  `LangChain4jAgentLoopTest` each plug in their *real* adapter over a mocked framework model — a test
+  harness that scripts the model's replies turn by turn — so JUnit
   runs every scenario against both engines. Engine-specific extras live in the subclass (e.g. a tool call
   split across multiple `Generation`s for Spring AI).
-- **LangChain4j wire test** — the real LangChain4j Anthropic model against a local fake HTTP server:
+- **LangChain4j wire test** — the real LangChain4j Anthropic model against a local fake HTTP server
+  (a test harness standing in for Anthropic's API):
   checks the exact JSON sent (tool schemas, prompt-cache markers, tool-result pairing) and parsed
   (tool calls, cache tokens), with no API key.
 - **Engine registry test** — explicit engine, default fallback, unknown → 400, misconfiguration fails at startup.
