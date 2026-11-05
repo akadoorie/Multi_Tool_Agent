@@ -300,9 +300,9 @@ prefix at ~0.1× instead of re-sending it at full price. For the prefix to match
 requests, the system prompt is **date-granular** (not to-the-second) and the tools are advertised in a
 **stable, name-sorted** order. How well it works is itself observable: the rollup carries
 `total_cache_read_input_tokens` / `total_cache_creation_input_tokens` (read from Anthropic's native
-usage). In practice the ~1,325-token tools+system prefix **does cache**: the first model call *writes*
+usage). In practice the ~2,350-token tools+system prefix **does cache**: the first model call *writes*
 it (`cache_creation`) and later calls within the 5-minute TTL *read* it (`cache_read`), cutting
-full-price input by ~1,300 tokens per call. (Anthropic silently skips caching a prefix under a
+full-price input by ~2,350 tokens per call. (Anthropic silently skips caching a prefix under a
 model-specific minimum; should the prefix ever fall below it, these counts just return to 0 — so the
 fields surface whether caching is engaging rather than leaving it a silent no-op.)
 
