@@ -169,6 +169,17 @@ class SystemPromptFactoryTest {
     }
 
     @Test
+    void keepsAMultiPartTaskInOneJsonAnswerWithValuesSeparatedBySemicolons() {
+        String prompt = factory.build();
+
+        // Without this rule, a two-part task ("15% of 240, and the weather?") came back as a Markdown
+        // list with a "Here are your answers" lead-in instead of the JSON envelope, on both engines.
+        assertThat(prompt).contains("asks several things still gets ONE JSON object");
+        assertThat(prompt).contains("separated by \"; \"");
+        assertThat(prompt).contains("36; 18.2°C, cloudy");
+    }
+
+    @Test
     void allowsReusingEarlierToolResultsByRecallingTheTool() {
         String prompt = factory.build();
 
