@@ -42,7 +42,7 @@ class ConversationControllerTest {
     void returnsPagedTurnsWithDefaultSizeFromConfig() throws Exception {
         ConversationTurnDto turn = new ConversationTurnDto(0, "t0", "q0", "a0",
                 "the tool did not return the value, so used an earlier result", List.of("weather"),
-                Instant.parse("2026-07-01T10:00:00Z"));
+                Instant.parse("2026-07-01T10:00:00Z"), "spring-ai");
         when(service.getConversation("c1", 0, 7))
                 .thenReturn(new PagedConversationResponse(List.of(turn), 0, 7, 1, 1));
 
@@ -81,8 +81,8 @@ class ConversationControllerTest {
     @Test
     void addTaskContinuesTheConversation() throws Exception {
         TaskRecordDto followUp = new TaskRecordDto("id-2", "and 20% of that?", "48", List.of(),
-                new TaskRollup(1, 1, 1, 1, 0, 0), "c1", 1);
-        when(service.solve("and 20% of that?", "c1")).thenReturn(followUp);
+                new TaskRollup(1, 1, 1, 1, 0, 0), "c1", 1, "spring-ai");
+        when(service.solve("and 20% of that?", "c1", null)).thenReturn(followUp);
 
         mockMvc.perform(post("/conversations/c1/task")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -91,12 +91,27 @@ class ConversationControllerTest {
                 .andExpect(jsonPath("$.conversation_id").value("c1"))
                 .andExpect(jsonPath("$.conversation_order").value(1));
 
-        verify(service).solve("and 20% of that?", "c1");   // id comes from the path
+        verify(service).solve("and 20% of that?", "c1", null);   // id comes from the path
+    }
+
+    @Test
+    void addTaskPassesTheEngineQueryParameterThrough() throws Exception {
+        TaskRecordDto followUp = new TaskRecordDto("id-2", "and 20% of that?", "48", List.of(),
+                new TaskRollup(1, 1, 1, 1, 0, 0), "c1", 1, "langchain4j");
+        when(service.solve("and 20% of that?", "c1", "langchain4j")).thenReturn(followUp);
+
+        mockMvc.perform(post("/conversations/c1/task").param("engine", "langchain4j")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"task\":\"and 20% of that?\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.engine").value("langchain4j"));
+
+        verify(service).solve("and 20% of that?", "c1", "langchain4j");
     }
 
     @Test
     void addTaskUnknownConversationIs404() throws Exception {
-        when(service.solve("hi", "nope")).thenThrow(new ConversationNotFoundException("nope"));
+        when(service.solve("hi", "nope", null)).thenThrow(new ConversationNotFoundException("nope"));
 
         mockMvc.perform(post("/conversations/nope/task")
                         .contentType(MediaType.APPLICATION_JSON)

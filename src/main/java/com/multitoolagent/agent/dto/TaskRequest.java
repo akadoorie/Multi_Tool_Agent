@@ -6,7 +6,8 @@ import jakarta.validation.constraints.NotBlank;
 /**
  * Request body for submitting a task &mdash; identical for a new task ({@code POST /task}) and a
  * follow-up ({@code POST /conversations/{conversationId}/task}). The conversation, when continuing one,
- * is identified by the path, not the body.
+ * is identified by the path, not the body. The LLM engine is chosen with the {@code ?engine=} query
+ * parameter (a drop-down in Swagger UI), not here.
  *
  * @param task the natural-language task to solve.
  */

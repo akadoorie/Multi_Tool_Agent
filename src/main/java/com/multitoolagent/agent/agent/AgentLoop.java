@@ -1,6 +1,9 @@
 package com.multitoolagent.agent.agent;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.multitoolagent.agent.agent.llm.AgentMessage;
+import com.multitoolagent.agent.agent.llm.ILlmClient;
+import com.multitoolagent.agent.agent.llm.ModelTurn;
 import com.multitoolagent.agent.config.AppProperties;
 import com.multitoolagent.agent.exception.AgentExecutionException;
 import com.multitoolagent.agent.model.TaskRollup;
@@ -10,19 +13,10 @@ import com.multitoolagent.agent.tool.ToolResult;
 import com.multitoolagent.agent.util.JsonSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.anthropic.api.AnthropicApi;
-import org.springframework.ai.chat.messages.*;
-import org.springframework.ai.chat.metadata.Usage;
-import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.chat.model.Generation;
-import org.springframework.ai.chat.prompt.ChatOptions;
-import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * The explicit reason&rarr;act&rarr;observe loop &mdash; the heart of the agent.
@@ -31,6 +25,11 @@ import java.util.stream.Collectors;
  * the real results back (observe); repeat. The loop terminates when the model returns a plain text
  * turn with no tool calls. Every step is timed and recorded into the trace, and the model can only
  * ever see real tool output &mdash; it can never fabricate a tool result.
+ *
+ * <p>The loop is framework-free: it talks to the model only through an {@link ILlmClient}, chosen per
+ * task (Spring AI or LangChain4j). Everything that defines the agent's behaviour &mdash; the scope
+ * gate, the final-answer split, the trace and the token rollup &mdash; lives here once, so both
+ * engines behave identically.
  */
 @Component
 public class AgentLoop {
@@ -45,30 +44,22 @@ public class AgentLoop {
      */
     private static final String UNSUPPORTED = "Unsupported";
 
-    private final ChatModel chatModel;
     private final ToolRegistry registry;
-    private final ChatOptionsFactory optionsFactory;
     private final SystemPromptFactory promptFactory;
     private final JsonSupport json;
     private final AppProperties props;
 
-    public AgentLoop(ChatModel chatModel, ToolRegistry registry, ChatOptionsFactory optionsFactory,
-            SystemPromptFactory promptFactory, JsonSupport json, AppProperties props) {
-        this.chatModel = chatModel;
+    public AgentLoop(ToolRegistry registry, SystemPromptFactory promptFactory, JsonSupport json,
+            AppProperties props) {
         this.registry = registry;
-        this.optionsFactory = optionsFactory;
         this.promptFactory = promptFactory;
         this.json = json;
         this.props = props;
     }
 
-    /** Anthropic-native prompt-cache token counts for one model call (0 when absent / not cached). */
-    private record CacheUsage(long read, long creation) {
-    }
-
     /** Single-shot convenience: run a task with no prior conversation context. */
-    public LoopResult run(String task) {
-        return run(task, List.of());
+    public LoopResult run(String task, ILlmClient client) {
+        return run(task, List.of(), client);
     }
 
     /**
@@ -77,22 +68,22 @@ public class AgentLoop {
      * user/assistant messages &mdash; then the new user task, so the prompt-cache prefix stays
      * byte-stable. Only the task + answer of each prior turn is resent (not its trace/tool steps).
      *
+     * @param client the engine that makes the model calls for this task (Spring AI or LangChain4j).
      * @return the final answer, the trace, and the rollup (this turn's work only; the resent history is
      *         naturally counted in this turn's input tokens, which is correct).
      * @throws AgentExecutionException if the iteration cap is reached without a final answer.
      */
-    public LoopResult run(String task, List<PriorTurn> history) {
+    public LoopResult run(String task, List<PriorTurn> history, ILlmClient client) {
         long taskStartNanos = System.nanoTime();
 
-        List<Message> conversation = new ArrayList<>();
-        conversation.add(new SystemMessage(promptFactory.build()));
+        List<AgentMessage> conversation = new ArrayList<>();
+        conversation.add(new AgentMessage.System(promptFactory.build()));
         for (PriorTurn turn : history) {
-            conversation.add(new UserMessage(turn.task()));
-            conversation.add(new AssistantMessage(turn.finalAnswer()));
+            conversation.add(new AgentMessage.User(turn.task()));
+            conversation.add(AgentMessage.Assistant.text(turn.finalAnswer()));
         }
-        conversation.add(new UserMessage(task));
+        conversation.add(new AgentMessage.User(task));
 
-        ChatOptions options = optionsFactory.build();
         List<TraceStep> trace = new ArrayList<>();
         int stepIndex = 0;
         int totalInputTokens = 0;
@@ -106,34 +97,25 @@ public class AgentLoop {
             // Call the model; it reasons over the conversation and returns either a
             // final answer (no tool calls) or one or more tool-call requests.
             long modelStartNanos = System.nanoTime();
-            ChatResponse response = chatModel.call(new Prompt(conversation, options));
+            ModelTurn turn = client.call(conversation);
             long modelLatencyMs = elapsedMs(modelStartNanos);
 
-            TraceStep.TokenUsage usage = extractUsage(response);
-            CacheUsage cacheUsage = extractCacheUsage(response);
+            TraceStep.TokenUsage usage = turn.usage();
             // Sum tokens once per model call (never per tool step) so parallel tool calls in one turn
             // are not double-counted. Cache counts follow the same once-per-call rule.
             totalInputTokens += nullToZero(usage.inputTokens());
             totalOutputTokens += nullToZero(usage.outputTokens());
-            totalCacheReadInputTokens += cacheUsage.read();
-            totalCacheCreationInputTokens += cacheUsage.creation();
-            log.debug("Model call usage: input={} output={} cache_read={} cache_creation={}",
-                    usage.inputTokens(), usage.outputTokens(), cacheUsage.read(), cacheUsage.creation());
+            totalCacheReadInputTokens += turn.cacheReadTokens();
+            totalCacheCreationInputTokens += turn.cacheCreationTokens();
+            log.debug("Model call usage ({}): input={} output={} cache_read={} cache_creation={}",
+                    client.id(), usage.inputTokens(), usage.outputTokens(),
+                    turn.cacheReadTokens(), turn.cacheCreationTokens());
 
-            // Spring AI's Anthropic mapping can split ONE assistant turn across several Generations
-            // (e.g. an empty leading text block plus a separate tool_use block). Reading only
-            // response.getResult() (the first Generation) would miss tool calls that landed in a
-            // later one, so we aggregate text and tool calls across every Generation and rebuild a
-            // single assistant turn to add to the history.
-            String assistantText = aggregateText(response.getResults());
-            List<AssistantMessage.ToolCall> toolCalls = aggregateToolCalls(response.getResults());
-            AssistantMessage assistant = AssistantMessage.builder()
-                    .content(assistantText == null ? "" : assistantText)
-                    .toolCalls(toolCalls)
-                    .build();
+            String assistantText = turn.text();
+            List<AgentMessage.ToolCall> toolCalls = turn.toolCalls();
 
             // Resend the full history each turn: the Messages API is stateless.
-            conversation.add(assistant);
+            conversation.add(new AgentMessage.Assistant(assistantText, toolCalls));
 
             if (toolCalls.isEmpty()) {
                 // The model reasoned to a plain-text answer — no ACT/OBSERVE this turn; the task ends here.
@@ -199,46 +181,26 @@ public class AgentLoop {
 
             // ── ACT ─────────────────────────────────────────────────────────────
             // The model requested tools — execute each real tool it asked for (timed).
-            List<ToolResponseMessage.ToolResponse> toolResponses = new ArrayList<>();
-            for (AssistantMessage.ToolCall call : toolCalls) {
-                JsonNode input = json.parseOrEmpty(call.arguments());
+            List<AgentMessage.ToolResponse> toolResponses = new ArrayList<>();
+            for (AgentMessage.ToolCall call : toolCalls) {
+                JsonNode input = json.parseOrEmpty(call.argumentsJson());
                 long toolStartNanos = System.nanoTime();
                 ToolResult result = registry.execute(call.name(), input);
                 long toolLatencyMs = elapsedMs(toolStartNanos);
 
                 trace.add(TraceStep.tool(++stepIndex, iteration, call.name(), input, result, toolLatencyMs));
                 // Feed the REAL tool output back to the model.
-                toolResponses.add(new ToolResponseMessage.ToolResponse(
-                        call.id(), call.name(), json.write(result)));
+                toolResponses.add(new AgentMessage.ToolResponse(call.id(), call.name(), json.write(result)));
             }
             // ── OBSERVE ──────────────────────────────────────────────────────────
             // Feed the real tool results back into the conversation so the next
             // iteration's REASON observes them, then loop.
-            conversation.add(ToolResponseMessage.builder().responses(toolResponses).build());
+            conversation.add(new AgentMessage.ToolResults(toolResponses));
         }
 
         // Loop exhausted: fail loudly rather than fabricate an answer.
         throw new AgentExecutionException(
                 "Could not complete the task within " + maxIterations + " iterations.");
-    }
-
-    /** Joins the non-blank text from every Generation; returns null if the turn carried no text. */
-    private static String aggregateText(List<Generation> generations) {
-        String joined = generations.stream()
-                .map(generation -> generation.getOutput().getText())
-                .filter(text -> text != null && !text.isBlank())
-                .collect(Collectors.joining("\n"));
-        return joined.isBlank() ? null : joined;
-    }
-
-    /** Collects the tool calls from every Generation into one list (never null). */
-    private static List<AssistantMessage.ToolCall> aggregateToolCalls(List<Generation> generations) {
-        return generations.stream()
-                .map(Generation::getOutput)
-                .map(AssistantMessage::getToolCalls)
-                .filter(calls -> calls != null)
-                .flatMap(List::stream)
-                .toList();
     }
 
     private static long elapsedMs(long startNanos) {
@@ -282,39 +244,5 @@ public class AgentLoop {
             }
         }
         return null;
-    }
-
-    /** Reads token usage defensively &mdash; some responses may carry no usage metadata. */
-    private static TraceStep.TokenUsage extractUsage(ChatResponse response) {
-        Usage usage = response.getMetadata() == null ? null : response.getMetadata().getUsage();
-        if (usage == null) {
-            return new TraceStep.TokenUsage(0, 0, 0);
-        }
-        return new TraceStep.TokenUsage(
-                asInt(usage.getPromptTokens()),
-                asInt(usage.getCompletionTokens()),
-                asInt(usage.getTotalTokens()));
-    }
-
-    /** Accepts whatever numeric type the Spring AI {@code Usage} getters return (Integer or Long). */
-    private static Integer asInt(Number value) {
-        return value == null ? 0 : value.intValue();
-    }
-
-    /**
-     * Reads Anthropic prompt-cache token counts from the response's provider-native usage. These are
-     * not on Spring AI's generic {@link Usage}; they live only on {@link AnthropicApi.Usage}, reachable
-     * via {@link Usage#getNativeUsage()}. Returns zeros when the native usage isn't Anthropic's (e.g. a
-     * mocked test response) or the counts are absent &mdash; e.g. when the prefix is under the model's
-     * cache minimum, Anthropic returns no cache tokens (silently uncached).
-     */
-    private static CacheUsage extractCacheUsage(ChatResponse response) {
-        Usage usage = response.getMetadata() == null ? null : response.getMetadata().getUsage();
-        Object nativeUsage = usage == null ? null : usage.getNativeUsage();
-        if (nativeUsage instanceof AnthropicApi.Usage anthropic) {
-            return new CacheUsage(nullToZero(anthropic.cacheReadInputTokens()),
-                    nullToZero(anthropic.cacheCreationInputTokens()));
-        }
-        return new CacheUsage(0, 0);
     }
 }

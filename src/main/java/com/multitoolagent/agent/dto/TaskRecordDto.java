@@ -21,6 +21,7 @@ import java.util.List;
  * @param conversationId    id of the conversation this task belongs to; pass it back on a follow-up
  *                          {@code POST /task} to continue the conversation.
  * @param conversationOrder 0-based position of this task within its conversation (0 = the first turn).
+ * @param engine            which LLM client ran this task ({@code spring-ai} or {@code langchain4j}).
  */
 public record TaskRecordDto(
         @Schema(description = "Server-generated task id.", example = "5f2c1e9a-1c2b-4a7d-9e10-3c4f5a6b7c8d")
@@ -36,5 +37,7 @@ public record TaskRecordDto(
         @Schema(description = "Conversation id; pass it back on a follow-up POST /task to continue.")
         String conversationId,
         @Schema(description = "0-based position of this task within its conversation.", example = "0")
-        int conversationOrder) {
+        int conversationOrder,
+        @Schema(description = "Which LLM client ran this task: spring-ai or langchain4j.", example = "spring-ai")
+        String engine) {
 }

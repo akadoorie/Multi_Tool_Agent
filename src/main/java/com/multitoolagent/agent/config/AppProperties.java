@@ -27,6 +27,9 @@ public record AppProperties(Agent agent, Http http, Tools tools, Persistence per
      *                             {@code PromptConfig}; the {@code {{tool_count}}}/{@code {{tool_catalog}}}/
      *                             {@code {{current_date}}} placeholders are filled in per request by
      *                             {@code SystemPromptFactory}.
+     * @param defaultEngine        id of the LLM client used when a request doesn't name one
+     *                             ({@code spring-ai} or {@code langchain4j}).
+     * @param apiKey               Anthropic API key, shared by both engines (resolved from the environment).
      */
     public record Agent(
             String model,
@@ -34,7 +37,9 @@ public record AppProperties(Agent agent, Http http, Tools tools, Persistence per
             int maxTokens,
             double temperature,
             boolean sendSamplingParams,
-            String systemPromptLocation) {
+            String systemPromptLocation,
+            String defaultEngine,
+            String apiKey) {
     }
 
     /** Shared HTTP client timeouts, applied to every outbound tool call. */

@@ -3,6 +3,8 @@ package com.multitoolagent.agent.service;
 import com.multitoolagent.agent.agent.AgentLoop;
 import com.multitoolagent.agent.agent.LoopResult;
 import com.multitoolagent.agent.agent.PriorTurn;
+import com.multitoolagent.agent.agent.llm.ILlmClient;
+import com.multitoolagent.agent.agent.llm.LlmClientRegistry;
 import com.multitoolagent.agent.config.AppProperties;
 import com.multitoolagent.agent.dto.*;
 import com.multitoolagent.agent.exception.ConversationNotFoundException;
@@ -32,12 +34,15 @@ public class AgentService {
     private static final String MDC_TASK_ID = "task_id";
 
     private final AgentLoop loop;
+    private final LlmClientRegistry llmClients;
     private final ITaskRepository repository;
     private final Clock clock;
     private final AppProperties props;
 
-    public AgentService(AgentLoop loop, ITaskRepository repository, Clock clock, AppProperties props) {
+    public AgentService(AgentLoop loop, LlmClientRegistry llmClients, ITaskRepository repository,
+            Clock clock, AppProperties props) {
         this.loop = loop;
+        this.llmClients = llmClients;
         this.repository = repository;
         this.clock = clock;
         this.props = props;
@@ -47,33 +52,34 @@ public class AgentService {
     private record Conversation(String id, List<PriorTurn> history) {
     }
 
-    /** Runs a standalone task (a fresh one-turn conversation). */
-    public TaskRecordDto solve(String task) {
-        return solve(task, null);
-    }
-
     /**
      * Runs a task, optionally continuing a conversation, persists the result, and returns it (with the
      * conversation id/order so the client can continue).
      *
      * @param conversationId blank/null to start a new conversation; an existing id to continue it; an
      *                       unknown id triggers {@link ConversationNotFoundException} (404).
+     * @param engine         LLM client id ({@code spring-ai} / {@code langchain4j}); blank/null means the
+     *                       configured default; unknown triggers {@code InvalidRequestException} (400).
+     *                       A conversation may switch engines between turns: history is plain text.
      */
-    public TaskRecordDto solve(String task, String conversationId) {
+    public TaskRecordDto solve(String task, String conversationId, String engine) {
+        // Resolve the engine first so a bad engine id is a 400 before any other work.
+        ILlmClient client = llmClients.resolve(engine);
         Conversation conversation = resolveConversation(conversationId);
         String taskId = UUID.randomUUID().toString();
         MDC.put(MDC_TASK_ID, taskId);
         try {
-            log.info("Starting task in conversation {}: [\"{}\"]", conversation.id(), task);
-            LoopResult result = loop.run(task, conversation.history());
+            log.info("Starting task in conversation {} with engine {}: [\"{}\"]",
+                    conversation.id(), client.id(), task);
+            LoopResult result = loop.run(task, conversation.history(), client);
             // conversationOrder is a placeholder here — the repository assigns the real one under its
             // write lock (atomically with the append) and returns the stored record.
             TaskRecord record = new TaskRecord(taskId, task, result.finalAnswer(), result.trace(),
-                    result.rollup(), Instant.now(clock), conversation.id(), 0);
+                    result.rollup(), Instant.now(clock), conversation.id(), 0, client.id());
             TaskRecord stored = repository.save(record);
-            log.info("Stored task {} (conversation {} turn {}; {} input / {} output tokens, {} ms); "
-                            + "final answer: [\"{}\"]",
-                    taskId, stored.conversationId(), stored.conversationOrder(),
+            log.info("Stored task {} (conversation {} turn {}; engine {}; {} input / {} output tokens, "
+                            + "{} ms); final answer: [\"{}\"]",
+                    taskId, stored.conversationId(), stored.conversationOrder(), client.id(),
                     result.rollup().totalInputTokens(), result.rollup().totalOutputTokens(),
                     result.rollup().totalLatencyMs(), result.finalAnswer());
             return DtoMapper.toDto(stored);

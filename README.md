@@ -1,11 +1,11 @@
 # Multi-Tool Agent
 
-A Spring Boot REST API that accepts a natural-language task, runs an LLM agent (Claude, via Spring AI)
+A Spring Boot REST API that accepts a natural-language task, runs an LLM (Large Language Model) agent (Claude, via **Spring AI or LangChain4j — chosen per request**)
 that reasons step-by-step and calls **real tools** to solve it, and returns a final answer plus a
 **structured trace** of every reasoning step and tool call. All activity is persisted to a queryable
 JSON Lines file, and latency + token usage are first-class outputs.
 
-- **Java 21 · Spring Boot 3.4 · Spring AI 1.1 (Anthropic) · Maven · Docker**
+- **Java 21 · Spring Boot 3.4 · Spring AI 1.1 + LangChain4j 1.23 (both Anthropic) · Maven · Docker**
 - Tools: **Calculator, Weather, Web Search, Unit Converter (length, weight, temperature, currency)** (all real, keyless except the LLM)
 - Persistence: **file-only** (append-only JSONL + in-memory index) — no database
 - Worked examples: see **[EXAMPLES.md](EXAMPLES.md)** — 8 real tasks with their outputs and full traces
@@ -23,6 +23,7 @@ What the system does:
 - **Observability outputs** — latency and token usage, per step and as a task rollup.
 - **Persistence & retrieval** — store every task and fetch one back (`GET /tasks/{id}`).
 - **Multi-turn conversations** — follow-up tasks that resolve references to earlier turns (`POST /conversations/{id}/task`).
+- **Two interchangeable LLM engines** — each task may pick `spring-ai` (default) or `langchain4j` via an optional `?engine=` query parameter (a drop-down in Swagger UI); the stored task records which engine ran it (§4).
 - **Operations surface** — a health check (`GET /health`) and a Swagger UI to drive and document the API.
 
 ### Assumptions
@@ -46,7 +47,7 @@ How well it does it:
 - **Observability** — trace, latency, and tokens are first-class; `task_id` in the MDC (Mapped Diagnostic Context) correlates every log line.
 - **Reliability** — a tool failure never crashes a request; a max-iterations cap and per-tool HTTP timeouts bound every task.
 - **Determinism / low variance** — `temperature=0` and a bounded iteration count for predictable output.
-- **Extensibility (OCP — Open/Closed Principle)** — a new tool is one `@Component`; persistence sits behind an `ITaskRepository` interface (DB-swappable).
+- **Extensibility (OCP — Open/Closed Principle)** — a new tool is one `@Component`; a new LLM engine is one `ILlmClient` `@Component`; persistence sits behind an `ITaskRepository` interface (DB-swappable).
 - **Explainability & simplicity** — an explicit ~40-line loop and a file store, no framework/ORM (Object-Relational Mapping) magic.
 - **Security** — the API key is never committed (env-injected); tool output is treated as data, not instructions; the calculator uses a safe parser (no `eval`).
 - **Performance & cost** — prompt caching of the stable prefix, bounded conversation context, and an O(1) in-memory index.
@@ -58,9 +59,11 @@ How well it does it:
 ## 1. Architecture overview
 
 `POST /task` enters `TaskController`, which delegates to `AgentService`. `AgentService` runs an
-**explicit reason→act→observe loop** (`AgentLoop`) against Claude, with Spring AI's *internal tool
-execution disabled* so our code owns every act/observe step — which is what makes the trace trivial to
-build. Tools implement a common `ITool` interface and self-register into a `ToolRegistry`. Every model
+**explicit reason→act→observe loop** (`AgentLoop`) against Claude. The loop never imports an AI
+framework: it calls the model through a small `ILlmClient` interface, implemented once with **Spring AI**
+(`SpringAiLlmClient`) and once with **LangChain4j** (`LangChain4jLlmClient`). `LlmClientRegistry` picks
+the one the request names (default `spring-ai`). Neither framework is allowed to run tools itself, so our
+code owns every act/observe step — which is what makes the trace trivial to build. Tools implement a common `ITool` interface and self-register into a `ToolRegistry`. Every model
 call and tool call is timed and its token usage captured. When Claude returns a plain-text turn (no
 tool calls), that is the final answer; `AgentService` persists the full `TaskRecord` through a
 file-backed `ITaskRepository` and returns it. `GET /tasks/{id}` reads it back via an in-memory index.
@@ -77,8 +80,11 @@ flowchart TD
     Client -->|GET /tasks/id| Controller
     Controller --> Service[AgentService]
     Service --> Loop{"reason → act → observe loop"}
-    Loop -->|"prompt + tool schemas (internal execution OFF)"| Claude[("Claude via Spring AI ChatModel")]
-    Claude -->|"text turn OR tool-call requests"| Loop
+    Service -->|"resolve engine"| Clients[LlmClientRegistry]
+    Loop -->|"ILlmClient.call(conversation)"| Engine{"spring-ai OR langchain4j"}
+    Engine -->|"prompt + tool schemas (no auto tool execution)"| Claude[("Claude")]
+    Claude -->|"text turn OR tool-call requests"| Engine
+    Engine -->|"ModelTurn: text, tool calls, tokens"| Loop
     Loop -->|"dispatch by name"| Registry[ToolRegistry]
     Registry --> Calc[CalculatorTool]
     Registry --> Weather[WeatherTool]
@@ -199,14 +205,15 @@ detailed in §5, Data model).
 The loop (`AgentLoop.run`) is a plain, ~40-line state loop — deliberately not hidden inside the
 framework's automatic tool execution, because the assignment needs a trace of every step:
 
-1. **Reason** — send the full conversation + tool schemas to Claude (one model call; timed). The
+1. **Reason** — send the full conversation + tool schemas to Claude through the task's `ILlmClient`
+   (one model call; timed). The
    Messages API is stateless, so we resend the whole history each turn.
 2. If the response has **no tool calls**, the loop ends and returns the final answer — unless *no tool
    was invoked anywhere in the task*, in which case the answer isn't tool-grounded and the loop returns
    exactly `Unsupported` (the scope gate, below).
 3. Otherwise record one **`model_call`** step (reasoning text + token usage for this turn), then for
    each requested tool: **act** (execute the real tool, timed) and **observe** (append the real result
-   as a `ToolResponseMessage`). Record one `tool` step per call.
+   as a tool-results message). Record one `tool` step per call.
 4. Repeat until a final answer, or until the **max-iterations** cap is hit — in which case we throw a
    clear error (HTTP 422) rather than fabricate an answer.
 
@@ -233,12 +240,45 @@ framework's automatic tool execution, because the assignment needs a trace of ev
   power conversion (W→kW), which `unit_converter` doesn't support, is refused with a reason rather
   than quietly routed through the `calculator`.
 
-### Reading Claude's reply — why we aggregate `Generation`s
+### Two engines behind one interface (Spring AI and LangChain4j)
+
+`ILlmClient` has one job: *send this conversation to the model once and tell me what came back*
+(`ModelTurn` = text, requested tool calls, token and cache counts). Everything that defines the agent —
+the loop, the scope gate, the `{reasoning, answer}` split, the trace and the token rollup — lives once in
+`AgentLoop`, so both engines behave identically. Each adapter only translates our own neutral message
+types (`AgentMessage`) to and from its framework's types:
+
+| | Spring AI (`SpringAiLlmClient`) | LangChain4j (`LangChain4jLlmClient`) |
+|---|---|---|
+| Model call | `ChatModel.call(Prompt)` | `ChatModel.chat(ChatRequest)` |
+| Tools advertised | `ToolCallback` via `SpringAiToolAdapter` | `ToolSpecification` via `LangChain4jToolSpecs` |
+| No automatic tool runs | `internalToolExecutionEnabled(false)` | low-level `ChatModel`, not `AiServices` |
+| Prompt caching | `AnthropicCacheStrategy.SYSTEM_AND_TOOLS` | `cacheSystemMessages(true)` + `cacheTools(true)` |
+| Cache token counts | `AnthropicApi.Usage` (native usage) | `AnthropicTokenUsage` |
+
+Choosing the engine per request — an optional `engine` **query parameter** on both POST endpoints:
+
+```bash
+curl -s -X POST "localhost:8080/task?engine=langchain4j" -H "Content-Type: application/json" \
+  -d '{"task":"What is 17 multiplied by 23?"}'
+# -> { ..., "final_answer":"391", "engine":"langchain4j", ... }
+```
+
+- Omit `engine` → `app.agent.default-engine` (`spring-ai`). An unknown value → 400 listing the valid ones.
+- **Why a query parameter, not a body field:** Swagger UI only offers a drop-down for parameters, never for
+  a field inside the JSON body. `EngineParameterCustomizer` fills that drop-down from `LlmClientRegistry`
+  (the real engine ids, default pre-selected), so no list of engines is hard-coded anywhere.
+- A conversation may switch engines between turns: prior turns are resent as plain task + answer text.
+- Both engines send byte-identical prompts (same input-token counts), so one engine can even *read* the
+  prompt cache the other wrote.
+- Adding a third engine is one new `ILlmClient` `@Component`; the registry discovers it by its `id()`.
+
+### Reading Claude's reply — why the Spring AI client aggregates `Generation`s
 
 Claude's reply is one message whose body is a list of *content blocks* (text and/or `tool_use`
 requests). Spring AI exposes those on the `ChatResponse` as a `List<Generation>`, and a single
 tool-call reply can arrive **split across several generations** (e.g. an empty leading one, then a
-separate generation carrying the `tool_use`). So the loop reads **all** of them
+separate generation carrying the `tool_use`). So `SpringAiLlmClient` reads **all** of them
 (`response.getResults()`) and aggregates their text and tool calls into one assistant turn, instead of
 reading only `response.getResult()` — the *first* generation. Reading only the first would miss a tool
 call that landed in a later generation and make the agent silently skip the tool. A regression test
@@ -246,15 +286,16 @@ pins this behaviour, and it is exactly what the live connectivity spike (§10) s
 
 ### Token & latency capture
 
-Token usage comes from each response via Spring AI `ChatResponse.getMetadata().getUsage()`
-(prompt/completion/total) and is **summed once per iteration** (never per tool step, so parallel tool
+Token usage comes from each response (each `ILlmClient` maps its framework's usage object into the
+`ModelTurn`) and is **summed once per iteration** (never per tool step, so parallel tool
 calls in one turn aren't double-counted). Latency is measured with `System.nanoTime()` around each
 model and tool call; the rollup's total latency is the whole-task wall time.
 
 ### Prompt caching
 
 The stable per-call prefix (the four tool definitions + system prompt) is marked cacheable
-(`AnthropicCacheStrategy.SYSTEM_AND_TOOLS` in `ChatOptionsFactory`), so repeat model calls bill that
+(`AnthropicCacheStrategy.SYSTEM_AND_TOOLS` in `ChatOptionsFactory` for Spring AI; `cacheSystemMessages` +
+`cacheTools` in `LangChain4jConfig` for LangChain4j), so repeat model calls bill that
 prefix at ~0.1× instead of re-sending it at full price. For the prefix to match byte-for-byte across
 requests, the system prompt is **date-granular** (not to-the-second) and the tools are advertised in a
 **stable, name-sorted** order. How well it works is itself observable: the rollup carries
@@ -271,10 +312,10 @@ fields surface whether caching is engaging rather than leaving it a silent no-op
 
 | Type          | Role                                                                                  |
 |---------------|---------------------------------------------------------------------------------------|
-| `TaskRecord`  | Stored domain record (source of truth in `tasks.jsonl`); includes `conversation_id` / `conversation_order`. |
+| `TaskRecord`  | Stored domain record (source of truth in `tasks.jsonl`); includes `conversation_id` / `conversation_order` and `engine` (which LLM client ran it; null on older records). |
 | `TraceStep`   | One ordered step: `model_call`, `tool` (name/input/output), `reasoning` (explanation preceding an `Unsupported` verdict), or `final_answer` (carries `tools_used` — the distinct tools the task invoked). |
 | `TaskRollup`  | Per-task totals: latency, input/output tokens, iterations, and prompt-cache read/creation tokens. |
-| `TaskRequest` / `TaskRecordDto` / `ApiError` | API DTOs (Data Transfer Objects). `TaskRequest` accepts an optional `conversation_id`; `TaskRecordDto` echoes `conversation_id` / `conversation_order`. |
+| `TaskRequest` / `TaskRecordDto` / `ApiError` | API DTOs (Data Transfer Objects). `TaskRequest` carries only `task` (the conversation id is in the follow-up path and the engine in the `?engine=` query parameter, not the body); `TaskRecordDto` echoes `conversation_id` / `conversation_order` / `engine`. |
 | `ConversationTurnDto` | Lightweight per-turn view for `GET /conversations/{id}`: task, answer, `tools_used`, `created_at` — not the full trace (fetch that via `GET /tasks/{taskId}`). |
 
 The API and stored JSON use `snake_case` (`task_id`, `final_answer`, …).
@@ -384,12 +425,14 @@ that needs no tool ("write a haiku about that") still hits the no-tool backstop 
 
 ## 6. Design patterns & SOLID
 
-- **Strategy** — each tool is an `ITool` implementation; **Registry** — `ToolRegistry` resolves one by
-  name; **Repository** — persistence hides behind `ITaskRepository`; **constructor DI (Dependency Injection)** throughout.
+- **Strategy** — each tool is an `ITool` implementation and each LLM engine an `ILlmClient`
+  implementation; **Registry** — `ToolRegistry` / `LlmClientRegistry` resolve one by name; **Adapter** —
+  `SpringAiLlmClient` / `LangChain4jLlmClient` translate our neutral messages to each framework; **Repository** — persistence hides behind `ITaskRepository`; **constructor DI (Dependency Injection)** throughout.
 - **SRP (Single Responsibility Principle):** controller (HTTP) / service (orchestration) / tool (capability) / repository (storage) each
   do one thing. **OCP:** adding a tool needs no change to the loop, registry, or controller. **LSP (Liskov Substitution Principle):**
-  tools are interchangeable behind `ITool`. **ISP (Interface Segregation Principle):** `ITool` and `ITaskRepository` are small. **DIP (Dependency Inversion Principle):** the
-  service and loop depend on the `ITool` / `ITaskRepository` abstractions, injected via the constructor.
+  tools are interchangeable behind `ITool`, engines behind `ILlmClient`. **ISP (Interface Segregation Principle):** `ITool` and `ITaskRepository` are small. **DIP (Dependency Inversion Principle):** the
+  service and loop depend on the `ITool` / `ILlmClient` / `ITaskRepository` abstractions, injected via
+  the constructor — `AgentLoop` has no Spring AI or LangChain4j import.
 
 ### Model choice & the sampling flag
 
@@ -413,6 +456,8 @@ All tunables live in `src/main/resources/application.yml`, bound to the typed `A
 | `app.agent.max-tokens`       | `8192`                                              | Per-response output-token ceiling.             |
 | `app.agent.temperature`      | `0.0`                                               | Sampling temperature (only sent if next flag). |
 | `app.agent.send-sampling-params` | `true`                                          | Send `temperature`? Set `false` for Opus.      |
+| `app.agent.default-engine`   | `spring-ai`                                         | Engine used when a request omits `engine` (`spring-ai` / `langchain4j`). |
+| `app.agent.api-key`          | `${ANTHROPIC_API_KEY}`                              | Anthropic key shared by both engines.          |
 | `app.http.connect-timeout`   | `3s`                                                | Tool HTTP connect timeout.                     |
 | `app.http.read-timeout`      | `10s`                                               | Tool HTTP read timeout.                         |
 | `app.tools.weather.*`        | Open-Meteo geocode/forecast URLs                    | Weather API endpoints.                          |
@@ -424,8 +469,8 @@ All tunables live in `src/main/resources/application.yml`, bound to the typed `A
 | `app.pagination.max-size`    | `100`                                                | Largest `size` a caller may request (else 400). |
 | `logging.level.com.multitoolagent.agent` | `INFO`                                            | App log verbosity. Override via env `LOGGING_LEVEL_COM_MULTITOOLAGENT_AGENT` (e.g. a line in `.env`); `DEBUG` shows per-call token/cache usage. |
 
-The API key is **never** in config; `application.yml` references `${ANTHROPIC_API_KEY}`, which Spring
-resolves from the environment and Docker Compose injects from `.env`.
+The API key is **never** in config; `application.yml` references `${ANTHROPIC_API_KEY}` (once, in
+`app.agent.api-key`, which both engines read), which Spring resolves from the environment and Docker Compose injects from `.env`.
 
 ---
 
@@ -471,15 +516,23 @@ type is registered with the JSON converter.
 ./mvnw test        # or: mvn test
 ```
 
-60 deterministic tests, none of which call the live LLM:
+96 deterministic tests, none of which call the live LLM:
 
 - **Tool unit tests** — calculator (precedence, invalid expr, non-finite, div-by-zero), unit
   conversions (°C→°F, km→m), currency via a stubbed rate (and an unsupported currency, where the
   provider's `404` becomes a clean error instead of a propagated exception), and the web-search
   DDG→Wikipedia fallback (including when DuckDuckGo errors).
-- **Agent-loop tests** (mocked `ChatModel`) — tool dispatch + trace shape, the scope gate (a task that
-  invokes no tool returns `Unsupported`), tool-error recovery, the max-iterations guard,
-  once-per-iteration token summing, and aggregating a tool call split across multiple `Generation`s.
+- **Agent-loop tests — run once per engine.** The scenarios live once in the abstract `AgentLoopTest`
+  (tool dispatch + trace shape, tool-result id pairing, the scope gate, the `{reasoning, answer}` split,
+  tool-error recovery, the max-iterations guard, token and cache summing). `SpringAiAgentLoopTest` and
+  `LangChain4jAgentLoopTest` each plug in their *real* adapter over a mocked framework model, so JUnit
+  runs every scenario against both engines. Engine-specific extras live in the subclass (e.g. a tool call
+  split across multiple `Generation`s for Spring AI).
+- **LangChain4j wire test** — the real LangChain4j Anthropic model against a local fake HTTP server:
+  checks the exact JSON sent (tool schemas, prompt-cache markers, tool-result pairing) and parsed
+  (tool calls, cache tokens), with no API key.
+- **Engine registry test** — explicit engine, default fallback, unknown → 400, misconfiguration fails at startup.
+- **Swagger engine drop-down test** — `EngineParameterCustomizer` lists the registered engines and pre-selects the default.
 - **System-prompt test** — the built prompt injects the current date (fixed `Clock`), the tool list
   generated from the registry, the out-of-scope → `Unsupported` scope rule, and the internal-only-
   timestamp rule (so bare date/time questions are out of scope).
@@ -489,10 +542,11 @@ type is registered with the JSON converter.
   paging (default params, pass-through, invalid `page`/`size` → 400), `GET /health`.
 - **Repository test** — save/find round-trip and index rebuild from the file on restart.
 
-> **Live end-to-end smoke test (the "spike").** The automated tests mock `ChatModel`, so they prove the
-> orchestration but never exercise the real Spring AI ↔ Anthropic tool-calling path.
-> `SpringAiConnectivitySpike` (profile `spike`) closes that gap: it runs a *real* task through the real
-> `AgentLoop` against the live API and asserts a tool actually fired and a grounded answer came back:
+> **Live end-to-end smoke test (the "spike").** The automated tests mock the frameworks' models, so they
+> prove the orchestration but never exercise the real framework ↔ Anthropic tool-calling path.
+> `LlmConnectivitySpike` (profile `spike`) closes that gap: it runs a *real* task through the real
+> `AgentLoop` with **each** engine against the live API and asserts a tool actually fired and a grounded
+> answer came back:
 > `ANTHROPIC_API_KEY=... ./mvnw spring-boot:run -Dspring-boot.run.profiles=spike`.
 > This is what surfaced the multi-`Generation` split described in §4 — a bug the mocked tests could not see.
 

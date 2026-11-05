@@ -21,7 +21,7 @@ class DtoMapperTest {
     private static final Instant AT = Instant.parse("2026-07-01T10:00:00Z");
 
     private static TaskRecord record(String finalAnswer, List<TraceStep> trace) {
-        return new TaskRecord("t0", "the task", finalAnswer, trace, ROLLUP, AT, "c1", 0);
+        return new TaskRecord("t0", "the task", finalAnswer, trace, ROLLUP, AT, "c1", 0, "langchain4j");
     }
 
     @Test
@@ -51,5 +51,13 @@ class DtoMapperTest {
 
         assertThat(dto.finalAnswer()).isEqualTo("36");
         assertThat(dto.reasoning()).isNull();
+    }
+
+    @Test
+    void carriesTheEngineThatRanTheTask() {
+        TaskRecord record = record("36", List.of(TraceStep.finalAnswer(1, 1, List.of("calculator"), "36", 4, null)));
+
+        assertThat(DtoMapper.toDto(record).engine()).isEqualTo("langchain4j");
+        assertThat(DtoMapper.toConversationTurn(record).engine()).isEqualTo("langchain4j");
     }
 }

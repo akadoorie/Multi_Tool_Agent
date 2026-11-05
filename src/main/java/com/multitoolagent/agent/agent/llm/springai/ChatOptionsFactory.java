@@ -1,4 +1,4 @@
-package com.multitoolagent.agent.agent;
+package com.multitoolagent.agent.agent.llm.springai;
 
 import com.multitoolagent.agent.config.AppProperties;
 import com.multitoolagent.agent.tool.ITool;

@@ -22,7 +22,8 @@ public final class DtoMapper {
                 record.trace(),
                 record.rollup(),
                 record.conversationId(),
-                record.conversationOrder());
+                record.conversationOrder(),
+                record.engine());
     }
 
     /**
@@ -38,7 +39,8 @@ public final class DtoMapper {
                 record.finalAnswer(),
                 reasoning(record),
                 toolsUsed(record),
-                record.createdAt());
+                record.createdAt(),
+                record.engine());
     }
 
     /**

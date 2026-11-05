@@ -18,6 +18,8 @@ import java.util.List;
  *                          none, in which case it is omitted from the JSON.
  * @param toolsUsed         distinct tools this turn invoked (null for an {@code Unsupported} answer).
  * @param createdAt         when this turn completed.
+ * @param engine            which LLM client ran this turn ({@code spring-ai} or {@code langchain4j});
+ *                          turns of one conversation may use different engines.
  */
 public record ConversationTurnDto(
         @Schema(description = "0-based position of this turn within the conversation.", example = "0")
@@ -33,5 +35,7 @@ public record ConversationTurnDto(
         @Schema(description = "Distinct tools this turn invoked (null for an Unsupported answer).")
         List<String> toolsUsed,
         @Schema(description = "When this turn completed.")
-        Instant createdAt) {
+        Instant createdAt,
+        @Schema(description = "Which LLM client ran this turn: spring-ai or langchain4j.", example = "spring-ai")
+        String engine) {
 }

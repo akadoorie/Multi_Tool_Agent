@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.multitoolagent.agent.dto.PagedTasksResponse;
 import com.multitoolagent.agent.dto.TaskRecordDto;
+import com.multitoolagent.agent.exception.InvalidRequestException;
 import com.multitoolagent.agent.exception.TaskNotFoundException;
 import com.multitoolagent.agent.model.TaskRollup;
 import com.multitoolagent.agent.service.AgentService;
@@ -35,12 +36,12 @@ class TaskControllerTest {
 
     private TaskRecordDto sample(String id) {
         return new TaskRecordDto(id, "what is 2+2", "42", List.of(), new TaskRollup(1, 1, 1, 1, 0, 0),
-                "conv-1", 0);
+                "conv-1", 0, "spring-ai");
     }
 
     @Test
     void postTaskStartsANewConversationAndReturnsIt() throws Exception {
-        when(service.solve("what is 2+2")).thenReturn(sample("id-1"));
+        when(service.solve("what is 2+2", null, null)).thenReturn(sample("id-1"));
 
         mockMvc.perform(post("/task")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -50,9 +51,34 @@ class TaskControllerTest {
                 .andExpect(jsonPath("$.task").value("what is 2+2"))
                 .andExpect(jsonPath("$.final_answer").value("42"))
                 .andExpect(jsonPath("$.conversation_id").value("conv-1"))
-                .andExpect(jsonPath("$.conversation_order").value(0));
+                .andExpect(jsonPath("$.conversation_order").value(0))
+                .andExpect(jsonPath("$.engine").value("spring-ai"));
 
-        verify(service).solve("what is 2+2");   // the no-conversation path
+        verify(service).solve("what is 2+2", null, null);   // no conversation, default engine
+    }
+
+    @Test
+    void postTaskPassesTheEngineQueryParameterThrough() throws Exception {
+        when(service.solve("what is 2+2", null, "langchain4j")).thenReturn(sample("id-1"));
+
+        mockMvc.perform(post("/task").param("engine", "langchain4j")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"task\":\"what is 2+2\"}"))
+                .andExpect(status().isOk());
+
+        verify(service).solve("what is 2+2", null, "langchain4j");
+    }
+
+    @Test
+    void postTaskWithUnknownEngineReturns400() throws Exception {
+        when(service.solve("what is 2+2", null, "foo"))
+                .thenThrow(new InvalidRequestException("Unknown engine 'foo'. Valid engines: [langchain4j, spring-ai]."));
+
+        mockMvc.perform(post("/task").param("engine", "foo")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"task\":\"what is 2+2\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
     }
 
     @Test

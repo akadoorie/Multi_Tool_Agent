@@ -1,4 +1,4 @@
-package com.multitoolagent.agent.agent;
+package com.multitoolagent.agent.agent.llm.springai;
 
 import com.multitoolagent.agent.tool.ITool;
 import org.springframework.ai.tool.ToolCallback;
@@ -10,7 +10,7 @@ import org.springframework.ai.tool.definition.ToolDefinition;
  *
  * <p>Because the agent loop runs with internal tool execution disabled, Spring AI never invokes
  * {@link #call}. We make that invariant explicit and self-documenting by throwing if it is ever
- * called: execution belongs to {@link AgentLoop}, which is what lets us build the trace.
+ * called: execution belongs to {@code AgentLoop}, which is what lets us build the trace.
  */
 public class SpringAiToolAdapter implements ToolCallback {
 

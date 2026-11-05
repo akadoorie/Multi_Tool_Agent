@@ -17,6 +17,8 @@ import java.util.List;
  * @param conversationId    id of the conversation this task belongs to (a standalone task is a
  *                          conversation of one). Null on legacy records that predate the field.
  * @param conversationOrder 0-based position of this task within its conversation.
+ * @param engine            id of the LLM client that ran this task ({@code spring-ai} or
+ *                          {@code langchain4j}). Null on legacy records that predate the field.
  */
 public record TaskRecord(
         String taskId,
@@ -26,7 +28,8 @@ public record TaskRecord(
         TaskRollup rollup,
         Instant createdAt,
         String conversationId,
-        int conversationOrder) {
+        int conversationOrder,
+        String engine) {
 
     /**
      * A copy with {@code conversationOrder} replaced. The repository uses this to stamp the next
@@ -34,6 +37,6 @@ public record TaskRecord(
      */
     public TaskRecord withConversationOrder(int conversationOrder) {
         return new TaskRecord(taskId, task, finalAnswer, trace, rollup, createdAt, conversationId,
-                conversationOrder);
+                conversationOrder, engine);
     }
 }

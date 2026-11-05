@@ -1,6 +1,7 @@
 package com.multitoolagent.agent.controller;
 
 import com.multitoolagent.agent.config.AppProperties;
+import com.multitoolagent.agent.config.EngineParameterCustomizer;
 import com.multitoolagent.agent.dto.ApiError;
 import com.multitoolagent.agent.dto.PagedConversationResponse;
 import com.multitoolagent.agent.dto.PagedConversationSummaries;
@@ -67,11 +68,11 @@ public class ConversationController {
             summary = "Ask a follow-up in an existing conversation",
             description = "Submits a task that continues the given conversation, so the agent can "
                     + "reference earlier turns. The conversation id comes from a prior response's "
-                    + "`conversation_id`.")
+                    + "`conversation_id`. Each turn may use a different `engine` (query parameter).")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Task solved",
                     content = @Content(schema = @Schema(implementation = TaskRecordDto.class))),
-            @ApiResponse(responseCode = "400", description = "Blank/invalid task",
+            @ApiResponse(responseCode = "400", description = "Blank/invalid task or unknown engine",
                     content = @Content(schema = @Schema(implementation = ApiError.class))),
             @ApiResponse(responseCode = "404", description = "Unknown conversation id",
                     content = @Content(schema = @Schema(implementation = ApiError.class))),
@@ -80,9 +81,11 @@ public class ConversationController {
     })
     @PostMapping("/conversations/{conversationId}/task")
     public TaskRecordDto addTask(@PathVariable String conversationId,
-            @Valid @RequestBody TaskRequest request) {
+            @Valid @RequestBody TaskRequest request,
+            @Parameter(description = EngineParameterCustomizer.DESCRIPTION)
+            @RequestParam(name = EngineParameterCustomizer.PARAM, required = false) String engine) {
         // Continue the conversation; an unknown id -> ConversationNotFoundException -> 404 (in the service).
-        return service.solve(request.task(), conversationId);
+        return service.solve(request.task(), conversationId, engine);
     }
 
     @Operation(

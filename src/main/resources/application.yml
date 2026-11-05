@@ -7,10 +7,9 @@ spring:
     default-property-inclusion: non_null
   ai:
     anthropic:
-      # The API key is never stored in this file. It is resolved from the environment
-      # (Docker Compose injects it from a gitignored .env). The model is NOT set here on
-      # purpose — ChatOptionsFactory is the single source of truth for the model.
-      api-key: ${ANTHROPIC_API_KEY:}
+      # Shares app.agent.api-key so both engines (Spring AI and LangChain4j) use one key source.
+      # The model is NOT set here on purpose — app.agent.model is the single source of truth.
+      api-key: ${app.agent.api-key}
 
 app:
   agent:
@@ -24,6 +23,11 @@ app:
     # Loaded once at startup; {{tool_count}}/{{tool_catalog}}/{{current_date}} are filled in per request.
     # Override to an external file (e.g. file:./config/system-prompt.txt) to change the prompt without a rebuild.
     system-prompt-location: classpath:prompts/system-prompt.txt
+    # LLM client used when a request doesn't name one: spring-ai | langchain4j.
+    default-engine: spring-ai
+    # The API key is never stored in this file. It is resolved from the environment
+    # (Docker Compose injects it from a gitignored .env).
+    api-key: ${ANTHROPIC_API_KEY:}
   http:
     connect-timeout: 3s
     read-timeout: 10s

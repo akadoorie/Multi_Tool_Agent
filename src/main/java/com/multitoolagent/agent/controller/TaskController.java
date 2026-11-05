@@ -1,6 +1,7 @@
 package com.multitoolagent.agent.controller;
 
 import com.multitoolagent.agent.config.AppProperties;
+import com.multitoolagent.agent.config.EngineParameterCustomizer;
 import com.multitoolagent.agent.dto.ApiError;
 import com.multitoolagent.agent.dto.PagedTasksResponse;
 import com.multitoolagent.agent.dto.TaskRecordDto;
@@ -38,18 +39,21 @@ public class TaskController {
             description = "Runs the agent loop against the given natural-language task and returns the "
                     + "final answer plus the full reasoning/tool trace. The response includes a "
                     + "`conversation_id`; pass it to POST /conversations/{conversation_id}/task to ask "
-                    + "follow-ups that reference this task.")
+                    + "follow-ups that reference this task. Optionally choose the LLM engine with the "
+                    + "`engine` query parameter (defaults to app.agent.default-engine).")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Task solved",
                     content = @Content(schema = @Schema(implementation = TaskRecordDto.class))),
-            @ApiResponse(responseCode = "400", description = "Blank/invalid task",
+            @ApiResponse(responseCode = "400", description = "Blank/invalid task or unknown engine",
                     content = @Content(schema = @Schema(implementation = ApiError.class))),
             @ApiResponse(responseCode = "422", description = "Agent could not complete the task",
                     content = @Content(schema = @Schema(implementation = ApiError.class)))
     })
     @PostMapping("/task")
-    public TaskRecordDto createTask(@Valid @RequestBody TaskRequest request) {
-        return service.solve(request.task());   // new conversation
+    public TaskRecordDto createTask(@Valid @RequestBody TaskRequest request,
+            @Parameter(description = EngineParameterCustomizer.DESCRIPTION)
+            @RequestParam(name = EngineParameterCustomizer.PARAM, required = false) String engine) {
+        return service.solve(request.task(), null, engine);   // new conversation
     }
 
     @Operation(summary = "Fetch a stored task by id")

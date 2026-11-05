@@ -33,7 +33,7 @@ class FileTaskRepositoryTest {
     private AppProperties propsFor(Path file) {
         return new AppProperties(
                 new AppProperties.Agent("claude-sonnet-4-6", 8, 8192, 0.0, true,
-                        "classpath:prompts/system-prompt.txt"),
+                        "classpath:prompts/system-prompt.txt", "spring-ai", ""),
                 null, null,
                 new AppProperties.Persistence(file.toString()),
                 null, null);
@@ -49,7 +49,8 @@ class FileTaskRepositoryTest {
         TraceStep step = TraceStep.finalAnswer(1, 1, List.of("calculator"), "done", 5,
                 new TraceStep.TokenUsage(1, 2, 3));
         return new TaskRecord(id, "task " + id, "answer " + id, List.of(step),
-                new TaskRollup(10, 1, 2, 1, 0, 0), Instant.parse("2026-07-01T10:15:30Z"), conversationId, 0);
+                new TaskRollup(10, 1, 2, 1, 0, 0), Instant.parse("2026-07-01T10:15:30Z"), conversationId, 0,
+                "spring-ai");
     }
 
     /** As {@link #turn} but with an explicit opening-task text and created-at (for recency tests). */
@@ -57,7 +58,7 @@ class FileTaskRepositoryTest {
         TraceStep step = TraceStep.finalAnswer(1, 1, List.of("calculator"), "done", 5,
                 new TraceStep.TokenUsage(1, 2, 3));
         return new TaskRecord(id, task, "answer " + id, List.of(step),
-                new TaskRollup(10, 1, 2, 1, 0, 0), Instant.parse(createdAt), conversationId, 0);
+                new TaskRollup(10, 1, 2, 1, 0, 0), Instant.parse(createdAt), conversationId, 0, "spring-ai");
     }
 
     @Test
@@ -71,6 +72,24 @@ class FileTaskRepositoryTest {
         assertThat(repo.findById("a")).contains(record("a"));
         assertThat(repo.findAll()).hasSize(2);
         assertThat(repo.findById("missing")).isEmpty();
+    }
+
+    @Test
+    void loadsALegacyRecordWrittenBeforeTheEngineFieldExisted() throws Exception {
+        // tasks.jsonl lines written before per-request engines have no "engine" key; they must still load
+        // (with engine = null) rather than break startup.
+        Path file = tempDir.resolve("tasks.jsonl");
+        java.nio.file.Files.writeString(file, "{\"task_id\":\"old\",\"task\":\"t\",\"final_answer\":\"a\","
+                + "\"trace\":[],\"rollup\":{\"total_latency_ms\":1,\"total_input_tokens\":1,"
+                + "\"total_output_tokens\":1,\"iterations\":1},\"created_at\":\"2026-07-01T10:00:00Z\","
+                + "\"conversation_id\":\"c-old\",\"conversation_order\":0}\n");
+
+        FileTaskRepository repo = new FileTaskRepository(propsFor(file), mapper());
+
+        assertThat(repo.findById("old")).hasValueSatisfying(r -> {
+            assertThat(r.finalAnswer()).isEqualTo("a");
+            assertThat(r.engine()).isNull();
+        });
     }
 
     @Test
